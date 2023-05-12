@@ -11,6 +11,9 @@ description = "REAM is an event sourcing system"
 
 [dependencies]
 gleam_stdlib = "~> 0.28"
+gleam_otp = "~> 0.5"
+hug = "~> 0.1"
+gloml = "~> 0.1"
 
 [dev-dependencies]
-gleeunit = "~> 0.10"
+glacier = "~> 0.8"
