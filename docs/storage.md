@@ -1,4 +1,4 @@
-# Storage
+# Storage
 
 Because we have three different ways to handle information we have to design three different ways to store or persist that information.
 
@@ -6,7 +6,7 @@ For example, the events have to be placed in a fast to append system with a inde
 
 We are going to split these and explain these features for ensuring we are choosing a good method for storing them. But first we are going to talk about the files and how the information is going to be stored, after that we could go to the specifics for each of the ways we are handling information for.
 
-## Storage
+## Storage
 
 The content inside of the file is going to be in binary format based on the `term_to_binary/1` function from BEAM to store and retrieve that information as fast as possible but with the addition in the beginning of a 48-bits integer indicating the size of the element for helping us to navigate the elements if needed.
 
@@ -23,7 +23,7 @@ The index for the files is going to store the files opened putting the UUID in i
 
 Indeed we have only schemas for projections but they are going not to be important
 
-## Event Sourcing
+## Event Sourcing
 
 The event sourcing has the following actions:
 
@@ -62,7 +62,7 @@ For avoiding some race-conditions that could arise reading the aggregator when w
 
 - `aggregator.read_lock_when_writing` using a default value of `true`, we encourage the consistency.
 
-> **NOTE**
+> **Note**
 > However, it's not going to lock the events and it's not going to lock other aggregators or projections.
 
 The process file has the information about the elements it's storing and if all of them are marked as deleted, then the file is removed. Based on that the information of the aggregators could be generated again from the events makes no sense to keep that information.
