@@ -21,7 +21,19 @@ The index for the files is going to store the files opened putting the UUID in i
 
 ## Schemas
 
-Indeed we have only schemas for projections but they are going not to be important
+Indeed we have only schemas for projections and the rest of the systems are only storing information about:
+
+- `name` for the stream of events, collection of similar aggregators or tables for projections.
+- `type` where we could say: `stream`, `aggregator`, or `projection`.
+
+The files for these elements are going to be created under a directory with that name: `type/name`; i.e. if we are creating the stream `users` then the files for storing the events for that stream will be placed under `stream/users`.
+
+In the case of the projections we are placing an extra file inside of that directory called `schema`. The file is containing a list of the fields available for the projection the content for each field is:
+
+- `name` of the field.
+- `type` of the filed. It could be one of these: `normal`, `index`, `unique`.
+
+This way we have all of the information about the information we could find about the projection and the information to generate the indexes.
 
 ## Event Sourcing
 
