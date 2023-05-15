@@ -1,8 +1,8 @@
 import gleam/erlang/process.{Pid}
 import gleam/erlang/file
-import ream/fs/read
-import ream/fs/close
-import ream/fs/write
+import ream/storage/fs/read
+import ream/storage/fs/close
+import ream/storage/fs/write
 
 pub type Endian {
   Big
