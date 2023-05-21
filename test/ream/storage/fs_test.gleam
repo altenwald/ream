@@ -1,10 +1,10 @@
-import gleeunit
+import glacier
 import gleam/erlang/file.{Ebadf, Enoent}
 import ream/storage/fs
 import ream/storage/fs/read.{Eof, Ok as ReadOk}
 
 pub fn main() {
-  gleeunit.main()
+  glacier.main()
 }
 
 pub fn open_and_close_ok_test() {
