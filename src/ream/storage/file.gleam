@@ -1,8 +1,8 @@
 import gleam/erlang/process.{Pid}
 import gleam/erlang/file
-import ream/storage/fs/read
-import ream/storage/fs/close
-import ream/storage/fs/write
+import ream/storage/file/read
+import ream/storage/file/close
+import ream/storage/file/write
 
 pub type Endian {
   Big
@@ -63,15 +63,24 @@ pub fn close(io_device: Pid) -> Result(Bool, file.Reason) {
 external fn do_close(io_device: Pid) -> close.Result =
   "file" "close"
 
-pub fn write(io_device: Pid, data: String) -> Result(Bool, file.Reason) {
+pub fn write(io_device: Pid, data: BitString) -> Result(Bool, file.Reason) {
   case do_write(io_device, data) {
     write.Ok -> Ok(True)
     write.Error(reason) -> Error(reason)
   }
 }
 
-external fn do_write(io_device: Pid, data: String) -> write.Result =
+external fn do_write(io_device: Pid, data: BitString) -> write.Result =
   "file" "write"
+
+pub external fn dirname(filename: String) -> String =
+  "filename" "dirname"
+
+pub external fn basename(filename: String) -> String =
+  "filename" "basename"
+
+pub external fn join(parts: List(String)) -> String =
+  "filename" "join"
 
 pub external fn position(
   io_device: Pid,
