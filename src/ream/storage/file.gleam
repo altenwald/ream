@@ -87,3 +87,17 @@ pub external fn position(
   location: Location,
 ) -> Result(Int, file.Reason) =
   "file" "position"
+
+pub fn recursive_make_directory(path: String) -> Result(Bool, file.Reason) {
+  case file.is_directory(path) {
+    Error(file.Enoent) -> {
+      let prev_dir = dirname(path)
+      let assert Ok(True) = recursive_make_directory(prev_dir)
+      let assert Ok(_) = file.make_directory(path)
+      Ok(True)
+    }
+    Error(file.Eexist) -> Ok(True)
+    Ok(True) -> Ok(True)
+    _ -> Error(file.Einval)
+  }
+}

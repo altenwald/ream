@@ -1,11 +1,11 @@
-import glacier
+import glacier/cover
 import gleam/bit_string
 import gleam/erlang/file.{Ebadf, Enoent}
 import ream/storage/file as fs
 import ream/storage/file/read.{Eof, Ok as ReadOk}
 
 pub fn main() {
-  glacier.main()
+  cover.main([])
 }
 
 pub fn open_and_close_ok_test() {

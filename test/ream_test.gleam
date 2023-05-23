@@ -1,5 +1,5 @@
-import gleeunit
+import glacier/cover
 
 pub fn main() {
-  gleeunit.main()
+  cover.main([])
 }
