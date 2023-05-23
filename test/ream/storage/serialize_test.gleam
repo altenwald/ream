@@ -1,10 +1,5 @@
-import glacier/cover
 import ream/storage/serialize
 import gleam/dynamic
-
-pub fn main() {
-  cover.main([])
-}
 
 pub fn serialize_test() {
   let data =

@@ -49,6 +49,11 @@ stop_coverage() ->
                 lists:duplicate(15, "-"), "\n"
             ]),
             lists:foreach(fun(Cover) -> print_cover(Cover, Size) end, Return),
+            {Cov, NotCov} =
+                lists:foldl(fun({cover, _Mod, Cov, NotCov, _Percent}, {CovAcc, NotCovAcc}) ->
+                    {CovAcc + Cov, NotCovAcc + NotCov}
+                end, {0, 0}, Return),
+            io:format("~n~6.2f% (~b/~b)~n~n", [Calc(Cov, NotCov), Cov, Cov + NotCov]),
             nil;
 
         {error, not_main_node} ->

@@ -5,6 +5,7 @@ import gleam/int
 import gleam/iterator
 import gleam/list
 import gleam/map.{Map}
+import gleam/option.{None, Option, Some}
 import gleam/result.{try}
 import gleam/string
 import ids/uuid
@@ -20,6 +21,7 @@ pub type Stream {
   Stream(
     name: String,
     index: index.IndexFile,
+    active_file: Option(StreamFile),
     files: Map(Int, StreamFile),
     base_path: String,
   )
@@ -33,7 +35,23 @@ pub fn open(name: String, path path: String) -> Result(Stream, file.Reason) {
   let base_path = fs.join([path, "stream", name])
   let assert Ok(index_file) = index.open(base_path)
   use files <- try(do_open_files(index_file, base_path, map.new()))
-  Ok(Stream(name, index_file, files, base_path))
+  let active_file = less_populated_file(map.values(files))
+  Ok(Stream(name, index_file, active_file, files, base_path))
+}
+
+fn less_populated_file(files: List(StreamFile)) -> Option(StreamFile) {
+  files
+  |> list.fold(
+    with: fn(acc, file) {
+      let file_size = file.size
+      case acc {
+        Some(StreamFile(_id, _handler, size, _file_id)) if file_size >= size ->
+          acc
+        _ -> Some(file)
+      }
+    },
+    from: None,
+  )
 }
 
 pub fn close(stream: Stream) -> Result(Nil, file.Reason) {
@@ -51,10 +69,10 @@ fn do_open_files(
   path: String,
   acc: Map(Int, StreamFile),
 ) -> Result(Map(Int, StreamFile), file.Reason) {
-  case index.get_num_of_events(index_file) {
+  case index.count(index_file) {
     0 -> Ok(acc)
     num_of_events -> {
-      let _ = index.set_index_pos(index_file, 0)
+      let _ = index.set_pos(index_file, 0)
 
       let files =
         num_of_events - 1
@@ -63,7 +81,7 @@ fn do_open_files(
           from: acc,
           with: fn(acc, _idx) {
             let assert Ok(index.Index(_offset, _size, file_id)) =
-              index.get_next_index(index_file)
+              index.get_next(index_file)
             case map.has_key(acc, file_id) {
               True -> acc
               False -> {
@@ -127,22 +145,25 @@ pub fn add_event(
   // add 4 (32 / 8)
   let event_size = bit_string.byte_size(event) + 4
   let event_content = bit_string.concat([<<event_size:32>>, event])
-  let #(stream, index) = case index.get_num_of_events(stream.index) {
+  let #(stream, index) = case index.count(stream.index) {
     0 -> {
       let assert Ok(stream_file) = add_file(stream)
       let file_id = stream_file.id
       let #(index, index_file) =
-        index.add_event(stream.index, event_size, stream_file.id)
+        index.add(stream.index, event_size, stream_file.id)
       let stream =
         Stream(
           ..stream,
           index: index_file,
+          active_file: Some(stream_file),
           files: map.insert(stream.files, file_id, stream_file),
         )
       #(stream, index)
     }
     _ -> {
-      let #(index, index_file) = index.add_event(stream.index, event_size, 0)
+      let assert Some(active_file) = stream.active_file
+      let #(index, index_file) =
+        index.add(stream.index, event_size, active_file.id)
       let stream = Stream(..stream, index: index_file)
       #(stream, index)
     }
@@ -158,10 +179,10 @@ pub fn add_event(
 }
 
 pub fn get_event(stream: Stream, index: Int) -> Result(BitString, file.Reason) {
-  case index.get_num_of_events(stream.index) > index {
+  case index.count(stream.index) > index {
     True -> {
       let assert Ok(index.Index(offset, size, file_id)) =
-        index.get_index(stream.index, index)
+        index.get(stream.index, index)
       let assert Ok(file) = map.get(stream.files, file_id)
       let assert Ok(_) = fs.position(file.handler, fs.Bof(offset))
       let assert read.Ok(<<_size:32, event:binary>>) =

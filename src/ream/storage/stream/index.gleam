@@ -26,7 +26,7 @@ pub fn close(index_file: IndexFile) -> Result(Nil, file.Reason) {
   Ok(Nil)
 }
 
-pub fn add_event(
+pub fn add(
   index_file: IndexFile,
   event_size: Int,
   file_id: Int,
@@ -38,8 +38,8 @@ pub fn add_event(
     }
     _ -> {
       let assert Ok(_) = fs.position(index_file.handler, fs.Eof(-26))
-      let assert read.Ok(<<offset:48, prev_size:32, file_id:128>>) =
-        fs.read(index_file.handler, 26)
+      let assert Ok(<<offset:48, prev_size:32, _file_id:128>>) =
+        last_entry_for_file(index_file.handler, file_id)
       let offset = offset + prev_size
       let index = Index(offset, event_size, file_id)
       #(<<offset:48, event_size:32, file_id:128>>, index)
@@ -50,19 +50,33 @@ pub fn add_event(
   #(index, index_file)
 }
 
-pub fn get_num_of_events(index_file: IndexFile) -> Int {
+fn last_entry_for_file(
+  index_file: Pid,
+  file_id: Int,
+) -> Result(BitString, file.Reason) {
+  let assert read.Ok(<<offset:48, size:32, new_file_id:128>>) =
+    fs.read(index_file, 26)
+  case new_file_id == file_id {
+    True -> Ok(<<offset:48, size:32, file_id:128>>)
+    False -> {
+      case fs.position(index_file, fs.Cur(-52)) {
+        Ok(_) -> last_entry_for_file(index_file, file_id)
+        Error(file.Einval) -> Ok(<<0:48, 0:32, file_id:128>>)
+      }
+    }
+  }
+}
+
+pub fn count(index_file: IndexFile) -> Int {
   let assert Ok(result) = int.divide(index_file.size, 26)
   result
 }
 
-pub fn set_index_pos(
-  index_file: IndexFile,
-  index: Int,
-) -> Result(Int, file.Reason) {
+pub fn set_pos(index_file: IndexFile, index: Int) -> Result(Int, file.Reason) {
   fs.position(index_file.handler, fs.Bof(index * 26))
 }
 
-pub fn get_next_index(index_file: IndexFile) -> Result(Index, file.Reason) {
+pub fn get_next(index_file: IndexFile) -> Result(Index, file.Reason) {
   case fs.read(index_file.handler, 26) {
     read.Ok(<<offset:48, size:32, file_id:128>>) ->
       Ok(Index(offset, size, file_id))
@@ -71,14 +85,11 @@ pub fn get_next_index(index_file: IndexFile) -> Result(Index, file.Reason) {
   }
 }
 
-pub fn get_index(
-  index_file: IndexFile,
-  index: Int,
-) -> Result(Index, file.Reason) {
-  case get_num_of_events(index_file) > index {
+pub fn get(index_file: IndexFile, index: Int) -> Result(Index, file.Reason) {
+  case count(index_file) > index {
     True -> {
-      let assert Ok(_) = set_index_pos(index_file, index)
-      get_next_index(index_file)
+      let assert Ok(_) = set_pos(index_file, index)
+      get_next(index_file)
     }
     False -> Error(file.Einval)
   }
