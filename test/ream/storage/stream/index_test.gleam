@@ -44,7 +44,7 @@ pub fn add_and_retrieve_random_events_test() {
   let assert #(_event, random) = index.add(random, 30, file_id)
   let assert #(_event, random) = index.add(random, 25, file_id)
 
-  let assert 104 = random.size
+  let assert 100 = random.size
   let assert 4 = index.count(random)
 
   let assert Ok(Index(10, 20, 0)) = index.get(random, 1)

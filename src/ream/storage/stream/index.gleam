@@ -34,19 +34,19 @@ pub fn add(
   let #(index_content, index) = case index_file.size {
     0 -> {
       let index = Index(0, event_size, file_id)
-      #(<<0:48, event_size:32, file_id:128>>, index)
+      #(<<0:48, event_size:24, file_id:128>>, index)
     }
     _ -> {
-      let assert Ok(_) = fs.position(index_file.handler, fs.Eof(-26))
-      let assert Ok(<<offset:48, prev_size:32, _file_id:128>>) =
+      let assert Ok(_) = fs.position(index_file.handler, fs.Eof(-25))
+      let assert Ok(<<offset:48, prev_size:24, _file_id:128>>) =
         last_entry_for_file(index_file.handler, file_id)
       let offset = offset + prev_size
       let index = Index(offset, event_size, file_id)
-      #(<<offset:48, event_size:32, file_id:128>>, index)
+      #(<<offset:48, event_size:24, file_id:128>>, index)
     }
   }
   let assert Ok(_) = fs.write(index_file.handler, index_content)
-  let index_file = IndexFile(..index_file, size: index_file.size + 26)
+  let index_file = IndexFile(..index_file, size: index_file.size + 25)
   #(index, index_file)
 }
 
@@ -54,31 +54,31 @@ fn last_entry_for_file(
   index_file: Pid,
   file_id: Int,
 ) -> Result(BitString, file.Reason) {
-  let assert read.Ok(<<offset:48, size:32, new_file_id:128>>) =
-    fs.read(index_file, 26)
+  let assert read.Ok(<<offset:48, size:24, new_file_id:128>>) =
+    fs.read(index_file, 25)
   case new_file_id == file_id {
-    True -> Ok(<<offset:48, size:32, file_id:128>>)
+    True -> Ok(<<offset:48, size:24, file_id:128>>)
     False -> {
-      case fs.position(index_file, fs.Cur(-52)) {
+      case fs.position(index_file, fs.Cur(-50)) {
         Ok(_) -> last_entry_for_file(index_file, file_id)
-        Error(file.Einval) -> Ok(<<0:48, 0:32, file_id:128>>)
+        Error(file.Einval) -> Ok(<<0:48, 0:24, file_id:128>>)
       }
     }
   }
 }
 
 pub fn count(index_file: IndexFile) -> Int {
-  let assert Ok(result) = int.divide(index_file.size, 26)
+  let assert Ok(result) = int.divide(index_file.size, 25)
   result
 }
 
 pub fn set_pos(index_file: IndexFile, index: Int) -> Result(Int, file.Reason) {
-  fs.position(index_file.handler, fs.Bof(index * 26))
+  fs.position(index_file.handler, fs.Bof(index * 25))
 }
 
 pub fn get_next(index_file: IndexFile) -> Result(Index, file.Reason) {
-  case fs.read(index_file.handler, 26) {
-    read.Ok(<<offset:48, size:32, file_id:128>>) ->
+  case fs.read(index_file.handler, 25) {
+    read.Ok(<<offset:48, size:24, file_id:128>>) ->
       Ok(Index(offset, size, file_id))
     read.Eof -> Error(file.Espipe)
     _ -> Error(file.Einval)

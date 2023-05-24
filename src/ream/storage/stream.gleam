@@ -1,26 +1,18 @@
 import gleam/bit_string
 import gleam/erlang/file
-import gleam/erlang/process.{Pid}
-import gleam/int
 import gleam/iterator
 import gleam/list
 import gleam/map.{Map}
 import gleam/option.{None, Option, Some}
 import gleam/result.{try}
-import gleam/string
-import ids/uuid
 import ream/storage/file as fs
-import ream/storage/file/read
-import ream/storage/stream/index
-
-pub type StreamFile {
-  StreamFile(id: Int, handler: Pid, size: Int, file_path: String)
-}
+import ream/storage/stream/file.{StreamFile} as sfile
+import ream/storage/stream/index.{Index, IndexFile}
 
 pub type Stream {
   Stream(
     name: String,
-    index: index.IndexFile,
+    index: IndexFile,
     active_file: Option(StreamFile),
     files: Map(Int, StreamFile),
     base_path: String,
@@ -65,7 +57,7 @@ pub fn close(stream: Stream) -> Result(Nil, file.Reason) {
 }
 
 fn do_open_files(
-  index_file: index.IndexFile,
+  index_file: IndexFile,
   path: String,
   acc: Map(Int, StreamFile),
 ) -> Result(Map(Int, StreamFile), file.Reason) {
@@ -80,21 +72,11 @@ fn do_open_files(
         |> iterator.fold(
           from: acc,
           with: fn(acc, _idx) {
-            let assert Ok(index.Index(_offset, _size, file_id)) =
+            let assert Ok(Index(_offset, _size, file_id)) =
               index.get_next(index_file)
             case map.has_key(acc, file_id) {
               True -> acc
-              False -> {
-                let file_name = get_file_name(path, file_id)
-                let assert Ok(file_info) = file.file_info(file_name)
-                let assert Ok(file_pid) =
-                  fs.open(file_name, [fs.Read, fs.Append])
-                map.insert(
-                  acc,
-                  file_id,
-                  StreamFile(file_id, file_pid, file_info.size, file_name),
-                )
-              }
+              False -> map.insert(acc, file_id, sfile.open(path, file_id))
             }
           },
         )
@@ -102,40 +84,6 @@ fn do_open_files(
       Ok(files)
     }
   }
-}
-
-fn get_file_name(path: String, file_id: Int) -> String {
-  let <<p1:64, p2:32, p3:32, p4:32, p5:96>> =
-    file_id
-    |> int.to_base16()
-    |> string.pad_left(to: 32, with: "0")
-    |> bit_string.from_string()
-
-  let p1 = string.pad_left(int.to_base16(p1), to: 8, with: "0")
-  let p2 = string.pad_left(int.to_base16(p2), to: 4, with: "0")
-  let p3 = string.pad_left(int.to_base16(p3), to: 4, with: "0")
-  let p4 = string.pad_left(int.to_base16(p4), to: 4, with: "0")
-  let p5 = string.pad_left(int.to_base16(p5), to: 12, with: "0")
-  fs.join([path, p1, p2, p3, p4, p5])
-}
-
-fn add_file(stream: Stream) -> Result(StreamFile, file.Reason) {
-  let assert Ok(uuid) = uuid.generate_v4()
-  let file_id = uuid_to_int(uuid)
-  let file_name = get_file_name(stream.base_path, file_id)
-  let assert Ok(True) = fs.recursive_make_directory(fs.dirname(file_name))
-  use file_pid <- try(fs.open(file_name, [fs.Read, fs.Append]))
-  Ok(StreamFile(file_id, file_pid, 0, file_name))
-}
-
-fn uuid_to_int(uuid: String) -> Int {
-  let <<p1:64, _:8, p2:32, _:8, p3:32, _:8, p4:32, _:8, p5:96>> =
-    bit_string.from_string(uuid)
-
-  let assert Ok(uuid) =
-    bit_string.to_string(<<p1:64, p2:32, p3:32, p4:32, p5:96>>)
-  let assert Ok(uuid_int) = int.base_parse(uuid, 16)
-  uuid_int
 }
 
 pub fn add_event(
@@ -147,8 +95,7 @@ pub fn add_event(
   let event_content = bit_string.concat([<<event_size:32>>, event])
   let #(stream, index) = case index.count(stream.index) {
     0 -> {
-      let assert Ok(stream_file) = add_file(stream)
-      let file_id = stream_file.id
+      let assert Ok(stream_file) = sfile.create(stream.base_path)
       let #(index, index_file) =
         index.add(stream.index, event_size, stream_file.id)
       let stream =
@@ -156,7 +103,7 @@ pub fn add_event(
           ..stream,
           index: index_file,
           active_file: Some(stream_file),
-          files: map.insert(stream.files, file_id, stream_file),
+          files: map.insert(stream.files, stream_file.id, stream_file),
         )
       #(stream, index)
     }
@@ -170,24 +117,19 @@ pub fn add_event(
   }
 
   let assert Ok(file) = map.get(stream.files, index.file_id)
-  let assert Ok(_) = fs.write(file.handler, event_content)
+  let stream_file = sfile.write(file, event_content)
 
-  let stream_file = StreamFile(..file, size: file.size + event_size)
   let files = map.insert(stream.files, stream_file.id, stream_file)
-
   Ok(Stream(..stream, files: files))
 }
 
 pub fn get_event(stream: Stream, index: Int) -> Result(BitString, file.Reason) {
   case index.count(stream.index) > index {
     True -> {
-      let assert Ok(index.Index(offset, size, file_id)) =
+      let assert Ok(Index(offset, size, file_id)) =
         index.get(stream.index, index)
       let assert Ok(file) = map.get(stream.files, file_id)
-      let assert Ok(_) = fs.position(file.handler, fs.Bof(offset))
-      let assert read.Ok(<<_size:32, event:binary>>) =
-        fs.read(file.handler, size)
-      Ok(event)
+      sfile.read(file, offset, size)
     }
     False -> Error(file.Einval)
   }
