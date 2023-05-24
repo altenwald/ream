@@ -24,10 +24,10 @@ pub fn handle_two_different_files_test() {
   let assert 0 = event2.offset
   let assert True = file_id2 == event2.file_id
   let assert #(event3, multiple) = index.add(multiple, 100, file_id1)
-  let assert 100 = event3.offset
+  let assert 103 = event3.offset
   let assert True = file_id1 == event3.file_id
   let assert #(event4, multiple) = index.add(multiple, 100, file_id2)
-  let assert 100 = event4.offset
+  let assert 103 = event4.offset
   let assert True = file_id2 == event4.file_id
   let assert Ok(Nil) = index.close(multiple)
 }
@@ -47,10 +47,10 @@ pub fn add_and_retrieve_random_events_test() {
   let assert 100 = random.size
   let assert 4 = index.count(random)
 
-  let assert Ok(Index(10, 20, 0)) = index.get(random, 1)
-  let assert Ok(Index(60, 25, 0)) = index.get(random, 3)
-  let assert Ok(Index(0, 10, 0)) = index.get(random, 0)
-  let assert Ok(Index(30, 30, 0)) = index.get(random, 2)
+  let assert Ok(Index(13, 23, 0)) = index.get(random, 1)
+  let assert Ok(Index(69, 28, 0)) = index.get(random, 3)
+  let assert Ok(Index(0, 13, 0)) = index.get(random, 0)
+  let assert Ok(Index(36, 33, 0)) = index.get(random, 2)
 
   let assert Ok(Nil) = index.close(random)
 }

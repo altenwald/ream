@@ -88,11 +88,9 @@ fn do_open_files(
 
 pub fn add_event(
   stream: Stream,
-  event: BitString,
+  event_content: BitString,
 ) -> Result(Stream, file.Reason) {
-  // add 4 (32 / 8)
-  let event_size = bit_string.byte_size(event) + 4
-  let event_content = bit_string.concat([<<event_size:32>>, event])
+  let event_size = bit_string.byte_size(event_content)
   let #(stream, index) = case index.count(stream.index) {
     0 -> {
       let assert Ok(stream_file) = sfile.create(stream.base_path)
@@ -117,7 +115,8 @@ pub fn add_event(
   }
 
   let assert Ok(file) = map.get(stream.files, index.file_id)
-  let stream_file = sfile.write(file, event_content)
+  let event = sfile.Event(index.offset, event_content)
+  let stream_file = sfile.write(file, event)
 
   let files = map.insert(stream.files, stream_file.id, stream_file)
   Ok(Stream(..stream, files: files))
@@ -126,10 +125,11 @@ pub fn add_event(
 pub fn get_event(stream: Stream, index: Int) -> Result(BitString, file.Reason) {
   case index.count(stream.index) > index {
     True -> {
-      let assert Ok(Index(offset, size, file_id)) =
+      let assert Ok(Index(offset, _size, file_id)) =
         index.get(stream.index, index)
       let assert Ok(file) = map.get(stream.files, file_id)
-      sfile.read(file, offset, size)
+      let assert Ok(sfile.Event(_offset, data)) = sfile.read(file, offset)
+      Ok(data)
     }
     False -> Error(file.Einval)
   }
