@@ -1,7 +1,7 @@
 import gleam/erlang/file
 import gleam/option.{None}
 import ream/storage/file as fs
-import ream/storage/kv/file.{Value} as kv_file
+import ream/storage/kv/value.{Value}
 import ream/storage/kv/memtable
 import ream/storage/kv/sstable
 

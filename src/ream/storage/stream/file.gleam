@@ -72,8 +72,7 @@ pub fn write(stream_file: StreamFile, event: Event) -> StreamFile {
   let event_size_bits = index.event_size_bits
   let event_size_bytes = event_size_bits / 8
   let data_size = bit_string.byte_size(event.data) + event_size_bytes
-  let data =
-    bit_string.concat([<<data_size:size(event_size_bits)>>, event.data])
+  let data = <<data_size:size(event_size_bits), event.data:bit_string>>
   let assert Ok(_) = fs.position(stream_file.handler, fs.Bof(event.offset))
   let assert Ok(_) = fs.write(stream_file.handler, data)
   let data_size = bit_string.byte_size(data)

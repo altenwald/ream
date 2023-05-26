@@ -2,7 +2,7 @@ import gleam/bit_string
 import gleam/list
 import gleam/map.{Map}
 import gleam/option.{None}
-import ream/storage/kv/file as kv_file
+import ream/storage/kv/value.{Value}
 
 /// MemTable holds a sorted list of the latest written records.
 ///
@@ -18,7 +18,7 @@ pub type MemTable {
 
 /// MemTableEntry is a single entry in the MemTable.
 pub type MemTableEntry {
-  MemTableEntry(key: String, value: kv_file.Value)
+  MemTableEntry(key: String, value: Value)
 }
 
 pub type Reason {
@@ -76,12 +76,7 @@ pub fn bitstring_to_entry(bitstring: BitString) -> #(Int, MemTableEntry) {
   >> = bitstring
   let assert Ok(key) = bit_string.to_string(key_string)
   let value =
-    kv_file.Value(
-      data: None,
-      deleted: False,
-      file_id: file_id,
-      offset: file_offset,
-    )
+    Value(data: None, deleted: False, file_id: file_id, offset: file_offset)
   #(key_hash, MemTableEntry(key: key, value: value))
 }
 
@@ -95,7 +90,7 @@ pub external fn hash(key: String) -> Int =
 pub fn set(
   mem_table: MemTable,
   key: String,
-  value: kv_file.Value,
+  value: Value,
 ) -> Result(MemTable, Reason) {
   let key_hash = hash(key)
   case map.get(mem_table.entries, key_hash) {
