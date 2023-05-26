@@ -76,7 +76,10 @@ fn do_open_files(
               index.get_next(index_file)
             case map.has_key(acc, file_id) {
               True -> acc
-              False -> map.insert(acc, file_id, sfile.open(path, file_id))
+              False -> {
+                let assert Ok(file) = sfile.open(path, file_id)
+                map.insert(acc, file_id, file)
+              }
             }
           },
         )

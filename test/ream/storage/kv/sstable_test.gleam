@@ -1,7 +1,7 @@
-import gleam/bit_string
 import gleam/erlang/file
-import gleam/option.{Some}
+import gleam/option.{None}
 import ream/storage/file as fs
+import ream/storage/kv/file.{Value} as kv_file
 import ream/storage/kv/memtable
 import ream/storage/kv/sstable
 
@@ -15,30 +15,33 @@ pub fn sstable_flush_test() {
 
   let mem_table = memtable.new(max_size)
 
-  let value1 = bit_string.from_string("value1")
-  let value2 = bit_string.from_string("value2")
-  let value3 = bit_string.from_string("value3")
-  let value4 = bit_string.from_string("value4")
+  let <<file_id:128>> = <<0:128>>
+  let value1 = Value(0, False, None, file_id)
+  let value2 = Value(1, False, None, file_id)
+  let value3 = Value(2, False, None, file_id)
+  let value4 = Value(3, False, None, file_id)
 
-  let assert Ok(mem_table) = memtable.set(mem_table, 1, value1)
-  let assert Ok(mem_table) = memtable.set(mem_table, 10, value2)
-  let assert Ok(mem_table) = memtable.set(mem_table, 100, value3)
-  let assert Ok(mem_table) = memtable.set(mem_table, 1000, value4)
+  let assert Ok(mem_table) = memtable.set(mem_table, "key1", value1)
+  let assert Ok(mem_table) = memtable.set(mem_table, "key2", value2)
+  let assert Ok(mem_table) = memtable.set(mem_table, "key3", value3)
+  let assert Ok(mem_table) = memtable.set(mem_table, "key4", value4)
 
-  let assert True = memtable.contains(mem_table, 1)
-  let assert True = memtable.contains(mem_table, 10)
-  let assert True = memtable.contains(mem_table, 100)
-  let assert True = memtable.contains(mem_table, 1000)
+  let assert True = memtable.contains(mem_table, "key1")
+  let assert True = memtable.contains(mem_table, "key2")
+  let assert True = memtable.contains(mem_table, "key3")
+  let assert True = memtable.contains(mem_table, "key4")
 
   let assert Ok(True) = sstable.flush(mem_table, fs.join([path, "1.sst"]))
 
   let assert Ok(mem_table_loaded) =
     sstable.load(fs.join([path, "1.sst"]), max_size)
 
-  let assert Ok(entry) = memtable.get(mem_table_loaded, 1)
-  let assert True = entry.value == Some(value1)
-  let assert Ok(entry) = memtable.get(mem_table_loaded, 10)
-  let assert True = entry.value == Some(value2)
-  let assert Ok(entry) = memtable.get(mem_table_loaded, 100)
-  let assert True = entry.value == Some(value3)
+  let assert Ok(entry) = memtable.get(mem_table_loaded, "key1")
+  let assert 0 = entry.value.offset
+  let assert Ok(entry) = memtable.get(mem_table_loaded, "key2")
+  let assert 1 = entry.value.offset
+  let assert Ok(entry) = memtable.get(mem_table_loaded, "key3")
+  let assert 2 = entry.value.offset
+  let assert Ok(entry) = memtable.get(mem_table_loaded, "key4")
+  let assert 3 = entry.value.offset
 }

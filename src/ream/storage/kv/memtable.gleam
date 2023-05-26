@@ -1,7 +1,8 @@
 import gleam/bit_string
 import gleam/list
 import gleam/map.{Map}
-import gleam/option.{None, Option, Some}
+import gleam/option.{None}
+import ream/storage/kv/file as kv_file
 
 /// MemTable holds a sorted list of the latest written records.
 ///
@@ -17,18 +18,29 @@ pub type MemTable {
 
 /// MemTableEntry is a single entry in the MemTable.
 pub type MemTableEntry {
-  MemTableEntry(value: Option(BitString))
+  MemTableEntry(key: String, value: kv_file.Value)
 }
 
 pub type Reason {
   CapacityExceeded
 }
 
-/// The key size is 32-bit integer
-pub const key_size_bytes = 4
+/// The key hash size is 32-bit integer
+pub const key_hash_size_bytes = 4
 
-/// The value size of value is 16-bit integer
-pub const size_for_value_size_bytes = 2
+/// The key string size data is 16-bit integer
+pub const key_size_bytes = 2
+
+/// The file ID size is 128-bit integer corresponding to the UUID
+/// of the file in binary format.
+pub const file_id_size_bytes = 16
+
+/// The file offset size is 32-bit integer.
+pub const file_offset_size_bytes = 4
+
+/// The payload size for the memtable entry, it is the sum of the
+/// key hash size, file ID size, file offset size and key size.
+pub const payload_size_bytes = 26
 
 pub fn new(max_size: Int) -> MemTable {
   MemTable(entries: map.new(), size: 0, max_size: max_size)
@@ -39,20 +51,57 @@ pub fn from_entries(entries: Map(Int, MemTableEntry), max_size: Int) -> MemTable
   MemTable(entries: entries, size: size, max_size: max_size)
 }
 
-pub fn contains(mem_table: MemTable, key: Int) -> Bool {
-  map.has_key(mem_table.entries, key)
+pub fn entry_to_bitstring(entry: MemTableEntry) -> BitString {
+  let key_hash = hash(entry.key)
+  let key_string = bit_string.from_string(entry.key)
+  let key_size = bit_string.byte_size(key_string)
+  let file_id = entry.value.file_id
+  let file_offset = entry.value.offset
+  <<
+    key_hash:128,
+    key_size:16,
+    file_id:128,
+    file_offset:32,
+    key_string:bit_string,
+  >>
 }
+
+pub fn bitstring_to_entry(bitstring: BitString) -> #(Int, MemTableEntry) {
+  let <<
+    key_hash:128,
+    _key_size:16,
+    file_id:128,
+    file_offset:32,
+    key_string:bit_string,
+  >> = bitstring
+  let assert Ok(key) = bit_string.to_string(key_string)
+  let value =
+    kv_file.Value(
+      data: None,
+      deleted: False,
+      file_id: file_id,
+      offset: file_offset,
+    )
+  #(key_hash, MemTableEntry(key: key, value: value))
+}
+
+pub fn contains(mem_table: MemTable, key: String) -> Bool {
+  map.has_key(mem_table.entries, hash(key))
+}
+
+pub external fn hash(key: String) -> Int =
+  "erlang" "phash2"
 
 pub fn set(
   mem_table: MemTable,
-  key: Int,
-  value: BitString,
+  key: String,
+  value: kv_file.Value,
 ) -> Result(MemTable, Reason) {
-  case map.get(mem_table.entries, key) {
+  let key_hash = hash(key)
+  case map.get(mem_table.entries, key_hash) {
     Error(Nil) -> {
-      let entry = MemTableEntry(value: Some(value))
-      let entry_size =
-        bit_string.byte_size(value) + key_size_bytes + size_for_value_size_bytes
+      let entry = MemTableEntry(key, value)
+      let entry_size = calculate_size(entry)
       let current_size = mem_table.size + entry_size
       case current_size > mem_table.max_size {
         True -> Error(CapacityExceeded)
@@ -60,28 +109,25 @@ pub fn set(
           Ok(
             MemTable(
               ..mem_table,
-              entries: map.insert(mem_table.entries, key, entry),
+              entries: map.insert(mem_table.entries, key_hash, entry),
               size: current_size,
             ),
           )
       }
     }
-    Ok(MemTableEntry(old_value)) -> {
-      let old_value_size = case old_value {
-        None -> 0
-        Some(v) -> bit_string.byte_size(v)
-      }
-      let entry = MemTableEntry(value: Some(value))
-      let current_size =
-        mem_table.size + bit_string.byte_size(value) - old_value_size
-      case current_size > mem_table.max_size {
+    Ok(old_entry) -> {
+      let old_entry_size = calculate_size(old_entry)
+      let entry = MemTableEntry(..old_entry, value: value)
+      let current_entry_size = calculate_size(entry)
+      let mem_table_size = mem_table.size + current_entry_size - old_entry_size
+      case mem_table_size > mem_table.max_size {
         True -> Error(CapacityExceeded)
         False ->
           Ok(
             MemTable(
               ..mem_table,
-              entries: map.insert(mem_table.entries, key, entry),
-              size: mem_table.size + bit_string.byte_size(value) - old_value_size,
+              entries: map.insert(mem_table.entries, key_hash, entry),
+              size: mem_table_size,
             ),
           )
       }
@@ -89,27 +135,33 @@ pub fn set(
   }
 }
 
-pub fn delete(mem_table: MemTable, key: Int) -> MemTable {
-  case map.get(mem_table.entries, key) {
+pub fn delete(mem_table: MemTable, key: String) -> MemTable {
+  let key_hash = hash(key)
+  case map.get(mem_table.entries, key_hash) {
     Error(Nil) -> mem_table
-    Ok(MemTableEntry(None)) -> {
-      MemTable(..mem_table, entries: map.delete(mem_table.entries, key))
-    }
-    Ok(MemTableEntry(Some(value))) -> {
+    Ok(entry) -> {
       MemTable(
         ..mem_table,
-        entries: map.delete(mem_table.entries, key),
-        size: mem_table.size - bit_string.byte_size(value) - key_size_bytes - size_for_value_size_bytes,
+        entries: map.delete(mem_table.entries, key_hash),
+        size: mem_table.size - calculate_size(entry),
       )
     }
   }
 }
 
-pub fn get(mem_table: MemTable, key: Int) -> Result(MemTableEntry, Nil) {
-  map.get(mem_table.entries, key)
+pub fn get(mem_table: MemTable, key: String) -> Result(MemTableEntry, Nil) {
+  map.get(mem_table.entries, hash(key))
 }
 
-pub fn split(mem_table: MemTable, pivot: Int) -> #(MemTable, MemTable) {
+fn search_pivot(entries: Map(Int, MemTableEntry)) -> Int {
+  let keys = map.keys(entries)
+  let entries_count = map.size(entries)
+  let #(_, [pivot, ..]) = list.split(keys, at: entries_count / 2)
+  pivot
+}
+
+pub fn split(mem_table: MemTable) -> #(MemTable, MemTable) {
+  let pivot = search_pivot(mem_table.entries)
   let #(low_entries, high_entries) =
     mem_table.entries
     |> map.to_list()
@@ -141,11 +193,7 @@ fn calculate_entries_size(entries: Map(Int, MemTableEntry)) -> Int {
 }
 
 fn calculate_size(entry: MemTableEntry) -> Int {
-  case entry.value {
-    None -> 0
-    Some(value) ->
-      bit_string.byte_size(value) + key_size_bytes + size_for_value_size_bytes
-  }
+  bit_string.byte_size(entry_to_bitstring(entry))
 }
 
 pub fn get_bounds(mem_table: MemTable) -> #(Int, Int) {

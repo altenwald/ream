@@ -1,184 +1,191 @@
-import gleam/bit_string
 import gleam/map
-import gleam/option.{Some}
+import gleam/option.{None}
 import ream/storage/kv/memtable.{CapacityExceeded, MemTableEntry}
+import ream/storage/kv/file.{Value} as kv_file
 
 pub fn memtable_happy_path_test() {
   let mem_table = memtable.new(500)
 
-  let value1 = bit_string.from_string("value1")
-  let value2 = bit_string.from_string("value2")
-  let value3 = bit_string.from_string("value3")
+  let <<file_id:128>> = <<0:128>>
 
-  let assert Ok(mem_table) = memtable.set(mem_table, 1, value1)
-  let assert Ok(mem_table) = memtable.set(mem_table, 10, value2)
-  let assert Ok(mem_table) = memtable.set(mem_table, 100, value3)
+  let value1 = Value(0, False, None, file_id)
+  let value2 = Value(1, False, None, file_id)
+  let value3 = Value(2, False, None, file_id)
 
-  let assert True = memtable.contains(mem_table, 1)
-  let assert True = memtable.contains(mem_table, 10)
-  let assert True = memtable.contains(mem_table, 100)
+  let assert Ok(mem_table) = memtable.set(mem_table, "key1", value1)
+  let assert Ok(mem_table) = memtable.set(mem_table, "key2", value2)
+  let assert Ok(mem_table) = memtable.set(mem_table, "key3", value3)
 
-  let assert Ok(entry) = memtable.get(mem_table, 1)
-  let assert True = entry.value == Some(value1)
-  let assert Ok(entry) = memtable.get(mem_table, 10)
-  let assert True = entry.value == Some(value2)
-  let assert Ok(entry) = memtable.get(mem_table, 100)
-  let assert True = entry.value == Some(value3)
+  let assert True = memtable.contains(mem_table, "key1")
+  let assert True = memtable.contains(mem_table, "key2")
+  let assert True = memtable.contains(mem_table, "key3")
+
+  let assert Ok(entry) = memtable.get(mem_table, "key1")
+  let assert 0 = entry.value.offset
+  let assert Ok(entry) = memtable.get(mem_table, "key2")
+  let assert 1 = entry.value.offset
+  let assert Ok(entry) = memtable.get(mem_table, "key3")
+  let assert 2 = entry.value.offset
 }
 
 pub fn memtable_from_entries_test() {
-  let value1 = bit_string.from_string("value1")
-  let value2 = bit_string.from_string("value2")
-  let value3 = bit_string.from_string("value3")
+  let <<file_id:128>> = <<0:128>>
+  let value1 = Value(0, False, None, file_id)
+  let value2 = Value(1, False, None, file_id)
+  let value3 = Value(2, False, None, file_id)
 
   let entries =
     [
-      #(1, MemTableEntry(Some(value1))),
-      #(10, MemTableEntry(Some(value2))),
-      #(100, MemTableEntry(Some(value3))),
+      #(memtable.hash("key1"), MemTableEntry("key1", value1)),
+      #(memtable.hash("key2"), MemTableEntry("key2", value2)),
+      #(memtable.hash("key3"), MemTableEntry("key3", value3)),
     ]
     |> map.from_list()
 
   let mem_table = memtable.from_entries(entries, 500)
 
-  let assert True = memtable.contains(mem_table, 1)
-  let assert True = memtable.contains(mem_table, 10)
-  let assert True = memtable.contains(mem_table, 100)
+  let assert True = memtable.contains(mem_table, "key1")
+  let assert True = memtable.contains(mem_table, "key2")
+  let assert True = memtable.contains(mem_table, "key3")
 
-  let assert Ok(entry) = memtable.get(mem_table, 1)
-  let assert True = entry.value == Some(value1)
-  let assert Ok(entry) = memtable.get(mem_table, 10)
-  let assert True = entry.value == Some(value2)
-  let assert Ok(entry) = memtable.get(mem_table, 100)
-  let assert True = entry.value == Some(value3)
+  let assert Ok(entry) = memtable.get(mem_table, "key1")
+  let assert 0 = entry.value.offset
+  let assert Ok(entry) = memtable.get(mem_table, "key2")
+  let assert 1 = entry.value.offset
+  let assert Ok(entry) = memtable.get(mem_table, "key3")
+  let assert 2 = entry.value.offset
 }
 
 pub fn memtable_set_and_update_test() {
-  let value1 = bit_string.from_string("value1")
-  let value2 = bit_string.from_string("value2")
-  let value3 = bit_string.from_string("value3")
-  let value4 = bit_string.from_string("value4")
+  let <<file_id:128>> = <<0:128>>
+  let value1 = Value(0, False, None, file_id)
+  let value2 = Value(1, False, None, file_id)
+  let value3 = Value(2, False, None, file_id)
+  let value4 = Value(3, False, None, file_id)
 
   let entries =
     [
-      #(1, MemTableEntry(Some(value1))),
-      #(10, MemTableEntry(Some(value2))),
-      #(100, MemTableEntry(Some(value3))),
+      #(memtable.hash("key1"), MemTableEntry("key1", value1)),
+      #(memtable.hash("key2"), MemTableEntry("key2", value2)),
+      #(memtable.hash("key3"), MemTableEntry("key3", value3)),
+      #(memtable.hash("key4"), MemTableEntry("key4", value4)),
     ]
     |> map.from_list()
 
   let mem_table = memtable.from_entries(entries, 500)
 
-  let assert Ok(entry) = memtable.get(mem_table, 1)
-  let assert True = entry.value == Some(value1)
-  let assert Ok(entry) = memtable.get(mem_table, 10)
-  let assert True = entry.value == Some(value2)
-  let assert Ok(entry) = memtable.get(mem_table, 100)
-  let assert True = entry.value == Some(value3)
+  let assert Ok(entry) = memtable.get(mem_table, "key1")
+  let assert 0 = entry.value.offset
+  let assert Ok(entry) = memtable.get(mem_table, "key2")
+  let assert 1 = entry.value.offset
+  let assert Ok(entry) = memtable.get(mem_table, "key3")
+  let assert 2 = entry.value.offset
 
-  let assert Ok(mem_table) = memtable.set(mem_table, 10, value4)
+  let assert Ok(mem_table) = memtable.set(mem_table, "key1", value4)
 
-  let assert Ok(entry) = memtable.get(mem_table, 1)
-  let assert True = entry.value == Some(value1)
-  let assert Ok(entry) = memtable.get(mem_table, 10)
-  let assert True = entry.value == Some(value4)
-  let assert Ok(entry) = memtable.get(mem_table, 100)
-  let assert True = entry.value == Some(value3)
+  let assert Ok(entry) = memtable.get(mem_table, "key1")
+  let assert 3 = entry.value.offset
+  let assert Ok(entry) = memtable.get(mem_table, "key2")
+  let assert 1 = entry.value.offset
+  let assert Ok(entry) = memtable.get(mem_table, "key3")
+  let assert 2 = entry.value.offset
 }
 
 pub fn memtable_exceeded_capacity_test() {
-  let value1 = bit_string.from_string("value1")
-  let value2 = bit_string.from_string("value2")
-  let value_too_big = bit_string.from_string("this value is too big")
+  let <<file_id:128>> = <<0:128>>
+  let value1 = Value(0, False, None, file_id)
+  let value2 = Value(1, False, None, file_id)
 
-  let mem_table = memtable.new(15)
-  let assert Ok(mem_table) = memtable.set(mem_table, 1, value1)
+  let mem_table = memtable.new(50)
+  let assert Ok(mem_table) = memtable.set(mem_table, "key1", value1)
 
-  let assert Ok(entry) = memtable.get(mem_table, 1)
-  let assert True = entry.value == Some(value1)
+  let assert Ok(entry) = memtable.get(mem_table, "key1")
+  let assert 0 = entry.value.offset
 
-  let assert Ok(mem_table) = memtable.set(mem_table, 1, value2)
+  let assert Ok(mem_table) = memtable.set(mem_table, "key1", value2)
 
-  let assert Ok(entry) = memtable.get(mem_table, 1)
-  let assert True = entry.value == Some(value2)
+  let assert Ok(entry) = memtable.get(mem_table, "key1")
+  let assert 1 = entry.value.offset
 
-  let assert Error(CapacityExceeded) = memtable.set(mem_table, 2, value_too_big)
-  let assert Error(CapacityExceeded) = memtable.set(mem_table, 1, value_too_big)
+  let assert Error(CapacityExceeded) = memtable.set(mem_table, "key2", value2)
 }
 
 pub fn memtable_delete_test() {
+  let <<file_id:128>> = <<0:128>>
+  let value1 = Value(0, False, None, file_id)
+  let value2 = Value(1, False, None, file_id)
+  let value3 = Value(2, False, None, file_id)
+
   let mem_table = memtable.new(500)
 
-  let value1 = bit_string.from_string("value1")
-  let value2 = bit_string.from_string("value2")
-  let value3 = bit_string.from_string("value3")
+  let assert Ok(mem_table) = memtable.set(mem_table, "key1", value1)
+  let assert Ok(mem_table) = memtable.set(mem_table, "key2", value2)
+  let assert Ok(mem_table) = memtable.set(mem_table, "key3", value3)
 
-  let assert Ok(mem_table) = memtable.set(mem_table, 1, value1)
-  let assert Ok(mem_table) = memtable.set(mem_table, 10, value2)
-  let assert Ok(mem_table) = memtable.set(mem_table, 100, value3)
+  let assert True = memtable.contains(mem_table, "key1")
+  let assert True = memtable.contains(mem_table, "key2")
+  let assert True = memtable.contains(mem_table, "key3")
 
-  let assert True = memtable.contains(mem_table, 1)
-  let assert True = memtable.contains(mem_table, 10)
-  let assert True = memtable.contains(mem_table, 100)
+  let assert Ok(entry) = memtable.get(mem_table, "key1")
+  let assert 0 = entry.value.offset
+  let assert Ok(entry) = memtable.get(mem_table, "key2")
+  let assert 1 = entry.value.offset
+  let assert Ok(entry) = memtable.get(mem_table, "key3")
+  let assert 2 = entry.value.offset
 
-  let assert Ok(entry) = memtable.get(mem_table, 1)
-  let assert True = entry.value == Some(value1)
-  let assert Ok(entry) = memtable.get(mem_table, 10)
-  let assert True = entry.value == Some(value2)
-  let assert Ok(entry) = memtable.get(mem_table, 100)
-  let assert True = entry.value == Some(value3)
-
-  let mem_table = memtable.delete(mem_table, 1)
-  let mem_table = memtable.delete(mem_table, 1)
-  let assert False = memtable.contains(mem_table, 1)
-  let assert Error(Nil) = memtable.get(mem_table, 1)
+  let mem_table = memtable.delete(mem_table, "key1")
+  let mem_table = memtable.delete(mem_table, "key1")
+  let assert False = memtable.contains(mem_table, "key1")
+  let assert Error(Nil) = memtable.get(mem_table, "key1")
 }
 
 pub fn memtable_split_test() {
+  let <<file_id:128>> = <<0:128>>
+  let value1 = Value(0, False, None, file_id)
+  let value2 = Value(1, False, None, file_id)
+  let value3 = Value(2, False, None, file_id)
+  let value4 = Value(3, False, None, file_id)
+
   let mem_table = memtable.new(500)
 
-  let value1 = bit_string.from_string("value1")
-  let value2 = bit_string.from_string("value2")
-  let value3 = bit_string.from_string("value3")
-  let value4 = bit_string.from_string("value4")
+  let assert Ok(mem_table) = memtable.set(mem_table, "key1", value1)
+  let assert Ok(mem_table) = memtable.set(mem_table, "key2", value2)
+  let assert Ok(mem_table) = memtable.set(mem_table, "key3", value3)
+  let assert Ok(mem_table) = memtable.set(mem_table, "key4", value4)
 
-  let assert Ok(mem_table) = memtable.set(mem_table, 1, value1)
-  let assert Ok(mem_table) = memtable.set(mem_table, 10, value2)
-  let assert Ok(mem_table) = memtable.set(mem_table, 100, value3)
-  let assert Ok(mem_table) = memtable.set(mem_table, 1000, value4)
+  let assert True = memtable.contains(mem_table, "key1")
+  let assert True = memtable.contains(mem_table, "key2")
+  let assert True = memtable.contains(mem_table, "key3")
+  let assert True = memtable.contains(mem_table, "key4")
 
-  let assert True = memtable.contains(mem_table, 1)
-  let assert True = memtable.contains(mem_table, 10)
-  let assert True = memtable.contains(mem_table, 100)
-  let assert True = memtable.contains(mem_table, 1000)
+  let assert #(mem_table1, mem_table2) = memtable.split(mem_table)
 
-  let assert #(mem_table1, mem_table2) = memtable.split(mem_table, 100)
+  let assert Ok(entry) = memtable.get(mem_table2, "key1")
+  let assert 0 = entry.value.offset
+  let assert Ok(entry) = memtable.get(mem_table2, "key2")
+  let assert 1 = entry.value.offset
+  let assert Error(Nil) = memtable.get(mem_table2, "key3")
+  let assert Error(Nil) = memtable.get(mem_table2, "key4")
 
-  let assert Ok(entry) = memtable.get(mem_table1, 1)
-  let assert True = entry.value == Some(value1)
-  let assert Ok(entry) = memtable.get(mem_table1, 10)
-  let assert True = entry.value == Some(value2)
-  let assert Error(Nil) = memtable.get(mem_table1, 100)
-  let assert Error(Nil) = memtable.get(mem_table1, 1000)
-
-  let assert Error(Nil) = memtable.get(mem_table2, 1)
-  let assert Error(Nil) = memtable.get(mem_table2, 10)
-  let assert Ok(entry) = memtable.get(mem_table2, 100)
-  let assert True = entry.value == Some(value3)
-  let assert Ok(entry) = memtable.get(mem_table2, 1000)
-  let assert True = entry.value == Some(value4)
+  let assert Error(Nil) = memtable.get(mem_table1, "key1")
+  let assert Error(Nil) = memtable.get(mem_table1, "key2")
+  let assert Ok(entry) = memtable.get(mem_table1, "key3")
+  let assert 2 = entry.value.offset
+  let assert Ok(entry) = memtable.get(mem_table1, "key4")
+  let assert 3 = entry.value.offset
 }
 
 pub fn get_bounds_test() {
+  let <<file_id:128>> = <<0:128>>
+  let value1 = Value(0, False, None, file_id)
+  let value2 = Value(1, False, None, file_id)
+  let value3 = Value(2, False, None, file_id)
+
   let mem_table = memtable.new(500)
 
-  let value1 = bit_string.from_string("value1")
-  let value2 = bit_string.from_string("value2")
-  let value3 = bit_string.from_string("value3")
+  let assert Ok(mem_table) = memtable.set(mem_table, "key1", value1)
+  let assert Ok(mem_table) = memtable.set(mem_table, "key2", value2)
+  let assert Ok(mem_table) = memtable.set(mem_table, "key3", value3)
 
-  let assert Ok(mem_table) = memtable.set(mem_table, 1, value1)
-  let assert Ok(mem_table) = memtable.set(mem_table, 10, value2)
-  let assert Ok(mem_table) = memtable.set(mem_table, 100, value3)
-
-  let assert #(1, 100) = memtable.get_bounds(mem_table)
+  let assert #(10_009_508, 126_902_492) = memtable.get_bounds(mem_table)
 }

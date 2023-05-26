@@ -12,7 +12,7 @@ pub fn open_and_close_ok_test() {
 
   let <<file_id:128>> = <<0:128>>
 
-  let entries = sfile.open(path, file_id)
+  let assert Ok(entries) = sfile.open(path, file_id)
   let assert Ok(_) = sfile.close(entries)
 }
 
