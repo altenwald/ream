@@ -41,10 +41,6 @@ gleam add ream
 
 and its documentation can be found at <https://hexdocs.pm/ream>.
 
-## Architecture and Design
-
-You can check the protocol [here](docs/protocol.md) and how the storage is going to take place [here](docs/storage.md).
-
 ## License
 
 Apache License Version 2.0, see [LICENSE](LICENSE)
