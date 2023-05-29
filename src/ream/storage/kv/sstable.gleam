@@ -10,6 +10,7 @@ const header_size = 38
 pub fn flush(mem_table: MemTable, path: String) -> Result(Bool, file.Reason) {
   let assert Ok(True) = fs.recursive_make_directory(fs.dirname(path))
   let assert Ok(file) = fs.open(path, [fs.Write])
+  // TODO maybe suggest the inclusion of `map.each/2` for gleam/stdlib
   map.filter(
     mem_table.entries,
     fn(_key, entry) {

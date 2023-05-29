@@ -36,12 +36,12 @@ pub fn sstable_flush_test() {
   let assert Ok(mem_table_loaded) =
     sstable.load(fs.join([path, "1.sst"]), max_size)
 
-  let assert Ok(entry) = memtable.get(mem_table_loaded, "key1")
-  let assert 0 = entry.value.offset
-  let assert Ok(entry) = memtable.get(mem_table_loaded, "key2")
-  let assert 1 = entry.value.offset
-  let assert Ok(entry) = memtable.get(mem_table_loaded, "key3")
-  let assert 2 = entry.value.offset
-  let assert Ok(entry) = memtable.get(mem_table_loaded, "key4")
-  let assert 3 = entry.value.offset
+  let assert Ok(value) = memtable.get(mem_table_loaded, "key1")
+  let assert 0 = value.offset
+  let assert Ok(value) = memtable.get(mem_table_loaded, "key2")
+  let assert 1 = value.offset
+  let assert Ok(value) = memtable.get(mem_table_loaded, "key3")
+  let assert 2 = value.offset
+  let assert Ok(value) = memtable.get(mem_table_loaded, "key4")
+  let assert 3 = value.offset
 }

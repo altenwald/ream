@@ -1,4 +1,4 @@
-//// Store the information of the file that is being streamed. It is used to
+//// Store the information of the event that is being streamed. It is used to
 //// write and read events from the file.
 ////
 //// The events stored in the file are in the following format:
@@ -23,8 +23,8 @@ pub type Event {
 /// - `handler`: the file handler to read and write events.
 /// - `size`: the size of the file.
 /// - `file_path`: the path of the file.
-pub type StreamFile {
-  StreamFile(id: Int, handler: Pid, size: Int, file_path: String)
+pub type EventFile {
+  EventFile(id: Int, handler: Pid, size: Int, file_path: String)
 }
 
 /// Create a new stream file. It creates a new file with a random UUID as the
@@ -33,12 +33,12 @@ pub type StreamFile {
 /// For example, if the UUID is `f81d4fae-7dec-11d0-a765-00a0c91e6bf6`, the
 /// file will be created in the following path:
 /// `base_path/f81d4fae/7dec/11d0/a765/00a0c91e6bf6`.
-pub fn create(base_path: String) -> Result(StreamFile, file.Reason) {
-  let <<file_id:128>> = uuid.generate_v4()
+pub fn create(base_path: String) -> Result(EventFile, file.Reason) {
+  let <<file_id:128>> = uuid.new()
   let file_name = get_file_name(base_path, file_id)
   let assert Ok(True) = fs.recursive_make_directory(fs.dirname(file_name))
   use file_pid <- try(fs.open(file_name, [fs.Read, fs.Append]))
-  Ok(StreamFile(file_id, file_pid, 0, file_name))
+  Ok(EventFile(file_id, file_pid, 0, file_name))
 }
 
 fn get_file_name(base_path: String, file_id: Int) -> String {
@@ -49,16 +49,16 @@ fn get_file_name(base_path: String, file_id: Int) -> String {
 /// If the file doesn't exist, it is creating it. The main difference
 /// with `create` is that `open` doesn't generate a new UUID.
 /// It returns the stream file with the file handler and the file size.
-pub fn open(path: String, file_id: Int) -> Result(StreamFile, file.Reason) {
+pub fn open(path: String, file_id: Int) -> Result(EventFile, file.Reason) {
   let file_name = get_file_name(path, file_id)
   let assert Ok(True) = fs.recursive_make_directory(fs.dirname(file_name))
   let assert Ok(file_pid) = fs.open(file_name, [fs.Read, fs.Append])
   let assert Ok(file_info) = file.file_info(file_name)
-  Ok(StreamFile(file_id, file_pid, file_info.size, file_name))
+  Ok(EventFile(file_id, file_pid, file_info.size, file_name))
 }
 
 /// Close a stream file. It closes the file handler.
-pub fn close(stream_file: StreamFile) -> Result(Nil, file.Reason) {
+pub fn close(stream_file: EventFile) -> Result(Nil, file.Reason) {
   let assert Ok(_) = fs.close(stream_file.handler)
   Ok(Nil)
 }
@@ -68,7 +68,7 @@ pub fn close(stream_file: StreamFile) -> Result(Nil, file.Reason) {
 /// - 4 bytes: the size of the event
 /// - n bytes: the event
 /// It returns the updated stream file with the new size.
-pub fn write(stream_file: StreamFile, event: Event) -> StreamFile {
+pub fn write(stream_file: EventFile, event: Event) -> EventFile {
   let event_size_bits = index.event_size_bits
   let event_size_bytes = event_size_bits / 8
   let data_size = bit_string.byte_size(event.data) + event_size_bytes
@@ -76,14 +76,14 @@ pub fn write(stream_file: StreamFile, event: Event) -> StreamFile {
   let assert Ok(_) = fs.position(stream_file.handler, fs.Bof(event.offset))
   let assert Ok(_) = fs.write(stream_file.handler, data)
   let data_size = bit_string.byte_size(data)
-  StreamFile(..stream_file, size: stream_file.size + data_size)
+  EventFile(..stream_file, size: stream_file.size + data_size)
 }
 
 /// Read an event from the stream file. It reads the event and returns it as
 /// a BitString with the following format:
 /// - 4 bytes: the size of the event
 /// - n bytes: the event
-pub fn read(stream_file: StreamFile, offset: Int) -> Result(Event, file.Reason) {
+pub fn read(stream_file: EventFile, offset: Int) -> Result(Event, file.Reason) {
   let event_size_bits = index.event_size_bits
   let event_size_bytes = event_size_bits / 8
   let assert Ok(_) = fs.position(stream_file.handler, fs.Bof(offset))

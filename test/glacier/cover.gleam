@@ -7,7 +7,6 @@ import gleam/string
 pub fn cover_start() -> Nil {
   do_cover_start()
   find_files(matching: "**/*.{erl,gleam}", in: "src")
-  |> io.debug()
   |> list.map(gleam_to_erlang_module_name)
   |> list.map(dangerously_convert_string_to_atom(_, Utf8))
   |> list.each(recompile_for_coverage)
@@ -26,7 +25,7 @@ fn recompile_for_coverage(module) -> Atom {
       module
     }
     Error(err) -> {
-      io.debug(#("cannot compile coverage", err))
+      io.println_error("cannot compile coverage: " <> err)
       module
     }
   }

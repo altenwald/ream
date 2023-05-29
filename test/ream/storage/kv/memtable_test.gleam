@@ -20,12 +20,12 @@ pub fn memtable_happy_path_test() {
   let assert True = memtable.contains(mem_table, "key2")
   let assert True = memtable.contains(mem_table, "key3")
 
-  let assert Ok(entry) = memtable.get(mem_table, "key1")
-  let assert 0 = entry.value.offset
-  let assert Ok(entry) = memtable.get(mem_table, "key2")
-  let assert 1 = entry.value.offset
-  let assert Ok(entry) = memtable.get(mem_table, "key3")
-  let assert 2 = entry.value.offset
+  let assert Ok(value) = memtable.get(mem_table, "key1")
+  let assert 0 = value.offset
+  let assert Ok(value) = memtable.get(mem_table, "key2")
+  let assert 1 = value.offset
+  let assert Ok(value) = memtable.get(mem_table, "key3")
+  let assert 2 = value.offset
 }
 
 pub fn memtable_from_entries_test() {
@@ -48,12 +48,12 @@ pub fn memtable_from_entries_test() {
   let assert True = memtable.contains(mem_table, "key2")
   let assert True = memtable.contains(mem_table, "key3")
 
-  let assert Ok(entry) = memtable.get(mem_table, "key1")
-  let assert 0 = entry.value.offset
-  let assert Ok(entry) = memtable.get(mem_table, "key2")
-  let assert 1 = entry.value.offset
-  let assert Ok(entry) = memtable.get(mem_table, "key3")
-  let assert 2 = entry.value.offset
+  let assert Ok(value) = memtable.get(mem_table, "key1")
+  let assert 0 = value.offset
+  let assert Ok(value) = memtable.get(mem_table, "key2")
+  let assert 1 = value.offset
+  let assert Ok(value) = memtable.get(mem_table, "key3")
+  let assert 2 = value.offset
 }
 
 pub fn memtable_set_and_update_test() {
@@ -74,21 +74,21 @@ pub fn memtable_set_and_update_test() {
 
   let mem_table = memtable.from_entries(entries, 500)
 
-  let assert Ok(entry) = memtable.get(mem_table, "key1")
-  let assert 0 = entry.value.offset
-  let assert Ok(entry) = memtable.get(mem_table, "key2")
-  let assert 1 = entry.value.offset
-  let assert Ok(entry) = memtable.get(mem_table, "key3")
-  let assert 2 = entry.value.offset
+  let assert Ok(value) = memtable.get(mem_table, "key1")
+  let assert 0 = value.offset
+  let assert Ok(value) = memtable.get(mem_table, "key2")
+  let assert 1 = value.offset
+  let assert Ok(value) = memtable.get(mem_table, "key3")
+  let assert 2 = value.offset
 
   let assert Ok(mem_table) = memtable.set(mem_table, "key1", value4)
 
-  let assert Ok(entry) = memtable.get(mem_table, "key1")
-  let assert 3 = entry.value.offset
-  let assert Ok(entry) = memtable.get(mem_table, "key2")
-  let assert 1 = entry.value.offset
-  let assert Ok(entry) = memtable.get(mem_table, "key3")
-  let assert 2 = entry.value.offset
+  let assert Ok(value) = memtable.get(mem_table, "key1")
+  let assert 3 = value.offset
+  let assert Ok(value) = memtable.get(mem_table, "key2")
+  let assert 1 = value.offset
+  let assert Ok(value) = memtable.get(mem_table, "key3")
+  let assert 2 = value.offset
 }
 
 pub fn memtable_exceeded_capacity_test() {
@@ -99,13 +99,13 @@ pub fn memtable_exceeded_capacity_test() {
   let mem_table = memtable.new(50)
   let assert Ok(mem_table) = memtable.set(mem_table, "key1", value1)
 
-  let assert Ok(entry) = memtable.get(mem_table, "key1")
-  let assert 0 = entry.value.offset
+  let assert Ok(value) = memtable.get(mem_table, "key1")
+  let assert 0 = value.offset
 
   let assert Ok(mem_table) = memtable.set(mem_table, "key1", value2)
 
-  let assert Ok(entry) = memtable.get(mem_table, "key1")
-  let assert 1 = entry.value.offset
+  let assert Ok(value) = memtable.get(mem_table, "key1")
+  let assert 1 = value.offset
 
   let assert Error(CapacityExceeded) = memtable.set(mem_table, "key2", value2)
 }
@@ -126,12 +126,12 @@ pub fn memtable_delete_test() {
   let assert True = memtable.contains(mem_table, "key2")
   let assert True = memtable.contains(mem_table, "key3")
 
-  let assert Ok(entry) = memtable.get(mem_table, "key1")
-  let assert 0 = entry.value.offset
-  let assert Ok(entry) = memtable.get(mem_table, "key2")
-  let assert 1 = entry.value.offset
-  let assert Ok(entry) = memtable.get(mem_table, "key3")
-  let assert 2 = entry.value.offset
+  let assert Ok(value) = memtable.get(mem_table, "key1")
+  let assert 0 = value.offset
+  let assert Ok(value) = memtable.get(mem_table, "key2")
+  let assert 1 = value.offset
+  let assert Ok(value) = memtable.get(mem_table, "key3")
+  let assert 2 = value.offset
 
   let mem_table = memtable.delete(mem_table, "key1")
   let mem_table = memtable.delete(mem_table, "key1")
@@ -158,21 +158,23 @@ pub fn memtable_split_test() {
   let assert True = memtable.contains(mem_table, "key3")
   let assert True = memtable.contains(mem_table, "key4")
 
-  let assert #(mem_table1, mem_table2) = memtable.split(mem_table)
+  let pivot = memtable.search_pivot(mem_table)
+  let assert #(mem_table1, mem_table2, 124_145_142) =
+    memtable.split(mem_table, pivot)
 
-  let assert Ok(entry) = memtable.get(mem_table2, "key1")
-  let assert 0 = entry.value.offset
-  let assert Ok(entry) = memtable.get(mem_table2, "key2")
-  let assert 1 = entry.value.offset
+  let assert Ok(value) = memtable.get(mem_table2, "key1")
+  let assert 0 = value.offset
+  let assert Ok(value) = memtable.get(mem_table2, "key2")
+  let assert 1 = value.offset
   let assert Error(Nil) = memtable.get(mem_table2, "key3")
   let assert Error(Nil) = memtable.get(mem_table2, "key4")
 
   let assert Error(Nil) = memtable.get(mem_table1, "key1")
   let assert Error(Nil) = memtable.get(mem_table1, "key2")
-  let assert Ok(entry) = memtable.get(mem_table1, "key3")
-  let assert 2 = entry.value.offset
-  let assert Ok(entry) = memtable.get(mem_table1, "key4")
-  let assert 3 = entry.value.offset
+  let assert Ok(value) = memtable.get(mem_table1, "key3")
+  let assert 2 = value.offset
+  let assert Ok(value) = memtable.get(mem_table1, "key4")
+  let assert 3 = value.offset
 }
 
 pub fn get_bounds_test() {

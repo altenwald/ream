@@ -2,9 +2,11 @@ import gleam/list
 import gleam/erlang/file
 import gleam/option.{None, Some}
 import gleam/result
-import ream/storage/kv/value.{Info, Value}
+import ream/storage/kv/value.{Value, ValueFileInfo}
 
 const base_path = "build/value_test/kv/"
+
+const max_file_size = 1024
 
 pub fn open_and_close_test() {
   let path = base_path <> "entries"
@@ -12,7 +14,7 @@ pub fn open_and_close_test() {
 
   let <<file_id:128>> = <<0:128>>
 
-  let assert Ok(entries) = value.open(path, file_id)
+  let assert Ok(entries) = value.open(path, file_id, max_file_size)
   let assert Ok(_) = value.close(entries)
 }
 
@@ -20,7 +22,7 @@ pub fn create_and_close_test() {
   let path = base_path <> "names"
   let _ = file.recursive_delete(path)
 
-  let assert Ok(names) = value.create(path)
+  let assert Ok(names) = value.create(path, max_file_size)
   let assert Ok(_) = value.close(names)
 }
 
@@ -28,7 +30,7 @@ pub fn read_and_write_test() {
   let path = base_path <> "zipcodes"
   let _ = file.recursive_delete(path)
 
-  let assert Ok(zipcodes) = value.create(path)
+  let assert Ok(zipcodes) = value.create(path, max_file_size)
 
   let file_id = zipcodes.id
 
@@ -46,7 +48,10 @@ pub fn read_and_write_test() {
     list.fold(
       zipcodes_list,
       zipcodes,
-      fn(acc, zipcode) { value.write(acc, zipcode) },
+      fn(acc, zipcode) {
+        let assert Ok(value) = value.write_value(acc, zipcode)
+        value
+      },
     )
 
   let assert True =
@@ -64,7 +69,7 @@ pub fn delete_test() {
   let path = base_path <> "animals"
   let _ = file.recursive_delete(path)
 
-  let assert Ok(animals) = value.create(path)
+  let assert Ok(animals) = value.create(path, max_file_size)
 
   let file_id = animals.id
 
@@ -83,7 +88,10 @@ pub fn delete_test() {
     list.fold(
       animals_list,
       animals,
-      fn(acc, animal) { value.write(acc, animal) },
+      fn(acc, animal) {
+        let assert Ok(value) = value.write_value(acc, animal)
+        value
+      },
     )
 
   let assert True =
@@ -112,7 +120,8 @@ pub fn delete_test() {
       },
     )
 
-  let assert Info(read_file_id, 54, 5, 1) = value.get_file_info(animals)
+  let assert ValueFileInfo(read_file_id, 54, 1024, 5, 1) =
+    value.get_file_info(animals)
   let assert True = read_file_id == file_id
   let assert Ok(_) = value.close(animals)
 }
