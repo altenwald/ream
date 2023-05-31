@@ -76,7 +76,16 @@ pub fn create(
   let file_id = uuid.to_int(uuid.new())
   let file_name = get_file_name(base_path, file_id)
   let assert Ok(True) = fs.recursive_make_directory(fs.dirname(file_name))
-  use file_pid <- try(fs.open(file_name, [fs.Read, fs.Write]))
+  use file_pid <- try(fs.open(
+    file_name,
+    [
+      fs.Read,
+      fs.Write,
+      fs.Raw,
+      fs.ReadAhead(max_size),
+      fs.DelayedWrite(max_size, 1500),
+    ],
+  ))
   Ok(ValueFile(file_id, file_pid, 0, max_size, file_name))
 }
 
@@ -95,7 +104,17 @@ pub fn open(
 ) -> Result(ValueFile, file.Reason) {
   let file_name = get_file_name(path, file_id)
   let assert Ok(True) = fs.recursive_make_directory(fs.dirname(file_name))
-  let assert Ok(file_pid) = fs.open(file_name, [fs.Read, fs.Write])
+  let assert Ok(file_pid) =
+    fs.open(
+      file_name,
+      [
+        fs.Read,
+        fs.Write,
+        fs.Raw,
+        fs.ReadAhead(max_size),
+        fs.DelayedWrite(max_size, 1500),
+      ],
+    )
   let assert Ok(file_info) = file.file_info(file_name)
   Ok(ValueFile(file_id, file_pid, file_info.size, max_size, file_name))
 }

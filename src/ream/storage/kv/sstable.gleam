@@ -9,7 +9,8 @@ const header_size = 38
 
 pub fn flush(mem_table: MemTable, path: String) -> Result(Bool, file.Reason) {
   let assert Ok(True) = fs.recursive_make_directory(fs.dirname(path))
-  let assert Ok(file) = fs.open(path, [fs.Write])
+  let assert Ok(file) =
+    fs.open(path, [fs.Write, fs.Raw, fs.DelayedWrite(mem_table.max_size, 1500)])
   // TODO maybe suggest the inclusion of `map.each/2` for gleam/stdlib
   map.filter(
     mem_table.entries,
@@ -24,7 +25,7 @@ pub fn flush(mem_table: MemTable, path: String) -> Result(Bool, file.Reason) {
 }
 
 pub fn load(path: String, max_size: Int) -> Result(MemTable, file.Reason) {
-  let assert Ok(file) = fs.open(path, [fs.Read])
+  let assert Ok(file) = fs.open(path, [fs.Read, fs.Raw, fs.ReadAhead(max_size)])
   let assert Ok(entries) = read_entries(file, map.new())
   let assert Ok(_) = fs.close(file)
   Ok(memtable.from_entries(entries, max_size))
