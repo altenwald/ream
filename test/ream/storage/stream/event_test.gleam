@@ -1,7 +1,7 @@
 import gleam/list
 import gleam/erlang/file
 import gleam/result
-import ream/storage/stream/event.{Event}
+import ream/storage/stream/event
 
 const base_path = "build/stream_file_test/stream/"
 
@@ -30,11 +30,11 @@ pub fn read_and_write_ok_test() {
   let assert Ok(zipcodes) = event.create(path)
 
   let zipcodes_list = [
-    Event(0, <<"1336AA":utf8>>),
-    Event(9, <<"1336BB":utf8>>),
-    Event(18, <<"1336CC":utf8>>),
-    Event(27, <<"14100":utf8>>),
-    Event(35, <<"WC8 1DD":utf8>>),
+    <<"1336AA":utf8>>,
+    <<"1336BB":utf8>>,
+    <<"1336CC":utf8>>,
+    <<"14100":utf8>>,
+    <<"WC8 1DD":utf8>>,
   ]
 
   let zipcodes_offsets = [0, 9, 18, 27, 35]
@@ -49,7 +49,7 @@ pub fn read_and_write_ok_test() {
   let assert True =
     zipcodes_list == list.map(
       zipcodes_offsets,
-      fn(i) { result.unwrap(event.read(zipcodes, i), Event(0, <<>>)) },
+      fn(i) { result.unwrap(event.read(zipcodes, i), <<>>) },
     )
 
   let assert Ok(_) = event.close(zipcodes)

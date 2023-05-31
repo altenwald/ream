@@ -14,10 +14,6 @@ import ream/storage/file/read
 import ream/storage/stream/index
 import ream/uuid
 
-pub type Event {
-  Event(offset: Int, data: BitString)
-}
-
 /// The information for the stream file. The fields are:
 /// - `id`: the id of the file. It's intended to be a UUID but it's stored as an Int.
 /// - `handler`: the file handler to read and write events.
@@ -68,12 +64,12 @@ pub fn close(stream_file: EventFile) -> Result(Nil, file.Reason) {
 /// - 4 bytes: the size of the event
 /// - n bytes: the event
 /// It returns the updated stream file with the new size.
-pub fn write(stream_file: EventFile, event: Event) -> EventFile {
+pub fn write(stream_file: EventFile, event_data: BitString) -> EventFile {
   let event_size_bits = index.event_size_bits
   let event_size_bytes = event_size_bits / 8
-  let data_size = bit_string.byte_size(event.data) + event_size_bytes
-  let data = <<data_size:size(event_size_bits), event.data:bit_string>>
-  let assert Ok(_) = fs.position(stream_file.handler, fs.Bof(event.offset))
+  let data_size = bit_string.byte_size(event_data) + event_size_bytes
+  let data = <<data_size:size(event_size_bits), event_data:bit_string>>
+  let assert Ok(_) = fs.position(stream_file.handler, fs.Eof(0))
   let assert Ok(_) = fs.write(stream_file.handler, data)
   let data_size = bit_string.byte_size(data)
   EventFile(..stream_file, size: stream_file.size + data_size)
@@ -83,7 +79,10 @@ pub fn write(stream_file: EventFile, event: Event) -> EventFile {
 /// a BitString with the following format:
 /// - 4 bytes: the size of the event
 /// - n bytes: the event
-pub fn read(stream_file: EventFile, offset: Int) -> Result(Event, file.Reason) {
+pub fn read(
+  stream_file: EventFile,
+  offset: Int,
+) -> Result(BitString, file.Reason) {
   let event_size_bits = index.event_size_bits
   let event_size_bytes = event_size_bits / 8
   let assert Ok(_) = fs.position(stream_file.handler, fs.Bof(offset))
@@ -91,5 +90,5 @@ pub fn read(stream_file: EventFile, offset: Int) -> Result(Event, file.Reason) {
     fs.read(stream_file.handler, event_size_bytes)
   let content_size = size - event_size_bytes
   let assert read.Ok(data) = fs.read(stream_file.handler, content_size)
-  Ok(Event(offset, data))
+  Ok(data)
 }

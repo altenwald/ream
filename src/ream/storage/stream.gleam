@@ -6,7 +6,7 @@ import gleam/map.{Map}
 import gleam/option.{None, Option, Some}
 import gleam/result.{try}
 import ream/storage/file as fs
-import ream/storage/stream/event.{Event, EventFile}
+import ream/storage/stream/event.{EventFile}
 import ream/storage/stream/index.{Index, IndexFile}
 
 pub type Stream {
@@ -118,8 +118,7 @@ pub fn add_event(
   }
 
   let assert Ok(file) = map.get(stream.files, index.file_id)
-  let event = Event(index.offset, event_content)
-  let stream_file = event.write(file, event)
+  let stream_file = event.write(file, event_content)
 
   let files = map.insert(stream.files, stream_file.id, stream_file)
   Ok(Stream(..stream, files: files))
@@ -131,8 +130,7 @@ pub fn get_event(stream: Stream, index: Int) -> Result(BitString, file.Reason) {
       let assert Ok(Index(offset, _size, file_id)) =
         index.get(stream.index, index)
       let assert Ok(file) = map.get(stream.files, file_id)
-      let assert Ok(Event(_offset, data)) = event.read(file, offset)
-      Ok(data)
+      event.read(file, offset)
     }
     False -> Error(file.Einval)
   }
