@@ -52,7 +52,7 @@ pub fn add(
   let #(index_content, index) = case index_file.size {
     0 -> {
       let index = Index(0, event_size + event_size_bytes, file_id)
-      #(index_binary(index), index)
+      #(index_to_binary(index), index)
     }
     _ -> {
       let assert Ok(_) =
@@ -69,7 +69,7 @@ pub fn add(
       >>) = last_entry_for_file(index_file.handler, file_id)
       let offset = offset + prev_size
       let index = Index(offset, event_size + event_size_bytes, file_id)
-      #(index_binary(index), index)
+      #(index_to_binary(index), index)
     }
   }
   let assert Ok(_) = fs.write(index_file.handler, index_content)
@@ -78,7 +78,7 @@ pub fn add(
   #(index, index_file)
 }
 
-fn index_binary(index: Index) -> BitString {
+fn index_to_binary(index: Index) -> BitString {
   // FIXME: https://github.com/gleam-lang/gleam/issues/2166
   let offset_size_bits = offset_size_bits
   let event_size_bits = event_size_bits
@@ -106,11 +106,11 @@ fn last_entry_for_file(
     new_file_id:size(file_id_size_bits),
   >>) = fs.read(index_file, index_size_bytes)
   case new_file_id == file_id {
-    True -> Ok(index_binary(Index(offset, size, file_id)))
+    True -> Ok(index_to_binary(Index(offset, size, file_id)))
     False -> {
       case fs.position(index_file, fs.Cur(-2 * index_size_bytes)) {
         Ok(_) -> last_entry_for_file(index_file, file_id)
-        Error(file.Einval) -> Ok(index_binary(Index(0, 0, file_id)))
+        Error(file.Einval) -> Ok(index_to_binary(Index(0, 0, file_id)))
       }
     }
   }
@@ -143,7 +143,7 @@ pub fn get_next(index_file: IndexFile) -> Result(Index, file.Reason) {
 }
 
 pub fn get(index_file: IndexFile, index: Int) -> Result(Index, file.Reason) {
-  case count(index_file) > index {
+  case count(index_file) > index && index >= 0 {
     True -> {
       let assert Ok(_) = set_pos(index_file, index)
       get_next(index_file)
