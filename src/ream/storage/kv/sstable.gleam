@@ -5,6 +5,14 @@ import ream/storage/file as fs
 import ream/storage/file/read
 import ream/storage/kv/memtable.{MemTable, MemTableEntry}
 
+pub const key_hash_size_bits = 128
+
+pub const key_size_bits = 16
+
+pub const file_id_size_bits = 128
+
+pub const offset_size_bits = 32
+
 const header_size = 38
 
 pub fn flush(mem_table: MemTable, path: String) -> Result(Bool, file.Reason) {
@@ -35,15 +43,26 @@ fn read_entries(
   file: Pid,
   entries: Map(Int, MemTableEntry),
 ) -> Result(Map(Int, MemTableEntry), file.Reason) {
+  // FIXME: https://github.com/gleam-lang/gleam/issues/2166
+  let key_hash_size_bits = key_hash_size_bits
+  let key_size_bits = key_size_bits
+  let file_id_size_bits = file_id_size_bits
+  let offset_size_bits = offset_size_bits
+  // end FIXME
   case fs.read(file, header_size) {
-    read.Ok(<<key_hash:128, key_size:16, file_id:128, offset:32>>) -> {
+    read.Ok(<<
+      key_hash:size(key_hash_size_bits),
+      key_size:size(key_size_bits),
+      file_id:size(file_id_size_bits),
+      offset:size(offset_size_bits),
+    >>) -> {
       let assert read.Ok(key_string) = fs.read(file, key_size)
       let #(_key, entry) =
         memtable.bitstring_to_entry(<<
-          key_hash:128,
-          key_size:16,
-          file_id:128,
-          offset:32,
+          key_hash:size(key_hash_size_bits),
+          key_size:size(key_size_bits),
+          file_id:size(file_id_size_bits),
+          offset:size(offset_size_bits),
           key_string:bit_string,
         >>)
       let entries = map.insert(entries, key_hash, entry)

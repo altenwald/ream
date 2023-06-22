@@ -58,8 +58,8 @@ pub fn new(max_size: Int) -> MemTable {
   MemTable(entries: map.new(), size: 0, max_size: max_size)
 }
 
-/// calculate_entries_size calculates the total size of the entries in the
-/// MemTable. It is mainly used when we load the MemTable from disk.
+/// create the memtable around the memtable entries calculating the size.
+/// It is mainly used when we load the MemTable from disk, see `ream/kv/sstable`.
 pub fn from_entries(entries: Map(Int, MemTableEntry), max_size: Int) -> MemTable {
   let size = calculate_entries_size(entries)
   MemTable(entries: entries, size: size, max_size: max_size)
