@@ -16,7 +16,7 @@
 
 import gleam/bit_string
 import gleam/erlang/file
-import gleam/erlang/process.{Pid}
+import gleam/erlang/process.{Subject}
 import gleam/option.{None, Option, Some}
 import gleam/result.{try}
 import ream/storage/file as fs
@@ -45,7 +45,13 @@ pub type Value {
 /// - `max_size`: the maximum size of the file.
 /// - `file_path`: the path of the file.
 pub type ValueFile {
-  ValueFile(id: Int, handler: Pid, size: Int, max_size: Int, file_path: String)
+  ValueFile(
+    id: Int,
+    handler: Subject(fs.Message),
+    size: Int,
+    max_size: Int,
+    file_path: String,
+  )
 }
 
 /// The information for the kv file. The fields are:
@@ -76,16 +82,7 @@ pub fn create(
   let file_id = uuid.to_int(uuid.new())
   let file_name = get_file_name(base_path, file_id)
   let assert Ok(True) = fs.recursive_make_directory(fs.dirname(file_name))
-  use file_pid <- try(fs.open(
-    file_name,
-    [
-      fs.Read,
-      fs.Write,
-      fs.Raw,
-      fs.ReadAhead(max_size),
-      fs.DelayedWrite(max_size, 1500),
-    ],
-  ))
+  use file_pid <- try(fs.open(file_name, [fs.Read, fs.Write]))
   Ok(ValueFile(file_id, file_pid, 0, max_size, file_name))
 }
 
@@ -104,17 +101,7 @@ pub fn open(
 ) -> Result(ValueFile, file.Reason) {
   let file_name = get_file_name(path, file_id)
   let assert Ok(True) = fs.recursive_make_directory(fs.dirname(file_name))
-  let assert Ok(file_pid) =
-    fs.open(
-      file_name,
-      [
-        fs.Read,
-        fs.Write,
-        fs.Raw,
-        fs.ReadAhead(max_size),
-        fs.DelayedWrite(max_size, 1500),
-      ],
-    )
+  let assert Ok(file_pid) = fs.open(file_name, [fs.Read, fs.Write])
   let assert Ok(file_info) = file.file_info(file_name)
   Ok(ValueFile(file_id, file_pid, file_info.size, max_size, file_name))
 }
@@ -147,11 +134,11 @@ pub fn write_value(vfile: ValueFile, value: Value) -> Result(ValueFile, Reason) 
     deleted:8,
     data:bit_string,
   >>
-  let assert Ok(offset) = fs.position(vfile.handler, fs.Bof(value.offset))
+  let offset = value.offset
   case offset + data_size > vfile.max_size {
     True -> Error(CapacityExceeded)
     False -> {
-      let assert Ok(_) = fs.write(vfile.handler, packed_data)
+      let assert Ok(_) = fs.write(vfile.handler, fs.Bof(offset), packed_data)
       case offset + data_size > vfile.size {
         True -> Ok(ValueFile(..vfile, size: offset + data_size))
         False -> Ok(vfile)
@@ -186,11 +173,12 @@ pub fn read(vfile: ValueFile, offset: Int) -> Result(Value, Reason) {
   let value_size_bits = value_size_bits
   // end FIXME
   let value_size_bytes = value_size_bits / 8
-  let assert Ok(_) = fs.position(vfile.handler, fs.Bof(offset))
+  let header_size_bytes = value_size_bytes + 1
   let assert read.Ok(<<size:size(value_size_bits), deleted:8>>) =
-    fs.read(vfile.handler, value_size_bytes + 1)
-  let content_size = size - value_size_bytes - 1
-  let assert read.Ok(data) = fs.read(vfile.handler, content_size)
+    fs.read(vfile.handler, fs.Bof(offset), header_size_bytes)
+  let content_size = size - header_size_bytes
+  let assert read.Ok(data) =
+    fs.read(vfile.handler, fs.Bof(offset + header_size_bytes), content_size)
   let deleted = case deleted {
     0 -> False
     1 -> True
@@ -199,26 +187,28 @@ pub fn read(vfile: ValueFile, offset: Int) -> Result(Value, Reason) {
 }
 
 pub fn get_file_info(vfile: ValueFile) -> ValueFileInfo {
-  let assert Ok(_) = fs.position(vfile.handler, fs.Bof(0))
   let assert Ok(#(entries, deleted)) =
-    get_entries_and_deleted(vfile.handler, #(0, 0))
+    get_entries_and_deleted(vfile.handler, 0, #(0, 0))
   ValueFileInfo(vfile.id, vfile.size, vfile.max_size, entries, deleted)
 }
 
 fn get_entries_and_deleted(
-  handler: Pid,
+  handler: Subject(fs.Message),
+  offset: Int,
   acc: #(Int, Int),
 ) -> Result(#(Int, Int), file.Reason) {
   // FIXME: https://github.com/gleam-lang/gleam/issues/2166
   let value_size_bits = value_size_bits
   // end FIXME
   let value_size_bytes = value_size_bits / 8
-  case fs.read(handler, value_size_bytes + 1) {
-    read.Ok(<<size:size(value_size_bits), deleted:8>>) -> {
-      let payload_size = size - value_size_bytes - 1
-      let assert Ok(_) = fs.position(handler, fs.Cur(payload_size))
-      get_entries_and_deleted(handler, #(acc.0 + 1, acc.1 + deleted))
-    }
+  let header_size_bytes = value_size_bytes + 1
+  case fs.read(handler, fs.Bof(offset), header_size_bytes) {
+    read.Ok(<<size:size(value_size_bits), deleted:8>>) ->
+      get_entries_and_deleted(
+        handler,
+        offset + size,
+        #(acc.0 + 1, acc.1 + deleted),
+      )
     read.Eof -> Ok(acc)
     read.Error(reason) -> Error(reason)
   }

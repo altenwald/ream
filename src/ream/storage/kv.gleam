@@ -1,4 +1,4 @@
-import gleam/erlang/process.{Pid}
+import gleam/erlang/process.{Subject}
 import gleam/list
 import gleam/map.{Map}
 import gleam/option.{None, Option, Some}
@@ -104,12 +104,12 @@ fn new_id() -> Int {
 }
 
 fn read_memtable_ranges(
-  kv: Pid,
+  kv: Subject(fs.Message),
   path: String,
   max_size: Int,
   acc: Map(Int, MemTableRange),
 ) -> Map(Int, MemTableRange) {
-  case fs.read(kv, 48) {
+  case fs.read(kv, fs.Cur(0), 48) {
     read.Ok(<<lower:size(128), upper:size(128), id:size(128)>>) -> {
       let range = MemTableRange(lower, upper, None)
       read_memtable_ranges(kv, path, max_size, map.insert(acc, id, range))
@@ -124,13 +124,13 @@ fn read_memtable_ranges(
 }
 
 fn read_values(
-  kv: Pid,
+  kv: Subject(fs.Message),
   path: String,
   last_file_id: Option(Int),
   max_value_size: Int,
   acc: Map(Int, ValueFile),
 ) -> #(Option(Int), Map(Int, ValueFile)) {
-  case fs.read(kv, 16) {
+  case fs.read(kv, fs.Cur(0), 16) {
     read.Ok(<<file_id:size(128)>>) -> {
       let assert Ok(value_file) = value.open(path, file_id, max_value_size)
       read_values(
@@ -230,28 +230,30 @@ pub fn flush(kv: KV) -> Result(Nil, Nil) {
 }
 
 fn write_memtable_ranges(
-  kv_file: Pid,
+  kv_file: Subject(fs.Message),
   base_path: String,
   memtable_ranges: List(#(Int, MemTableRange)),
 ) -> Result(Nil, Nil) {
   case memtable_ranges {
     [#(id, MemTableRange(lower, upper, Some(memtable))), ..rest] -> {
       let assert Ok(True) = sstable.flush(memtable, sstable_path(base_path, id))
-      let assert Ok(_) = fs.write(kv_file, <<lower:128, upper:128, id:128>>)
+      let assert Ok(_) =
+        fs.write(kv_file, fs.Cur(0), <<lower:128, upper:128, id:128>>)
       write_memtable_ranges(kv_file, base_path, rest)
     }
     [#(id, MemTableRange(lower, upper, None)), ..rest] -> {
-      let assert Ok(_) = fs.write(kv_file, <<lower:128, upper:128, id:128>>)
+      let assert Ok(_) =
+        fs.write(kv_file, fs.Cur(0), <<lower:128, upper:128, id:128>>)
       write_memtable_ranges(kv_file, base_path, rest)
     }
     [] -> Ok(Nil)
   }
 }
 
-fn write_values(kv: Pid, values: List(Int)) -> Result(Nil, Nil) {
+fn write_values(kv: Subject(fs.Message), values: List(Int)) -> Result(Nil, Nil) {
   case values {
     [id, ..rest] -> {
-      let assert Ok(_) = fs.write(kv, <<id:128>>)
+      let assert Ok(_) = fs.write(kv, fs.Cur(0), <<id:128>>)
       write_values(kv, rest)
     }
     [] -> Ok(Nil)

@@ -1,5 +1,5 @@
 import gleam/erlang/file
-import gleam/erlang/process.{Pid}
+import gleam/erlang/process.{Subject}
 import gleam/int
 import gleam/result.{try}
 import ream/storage/file as fs
@@ -27,7 +27,7 @@ pub type Index {
 }
 
 pub type IndexFile {
-  IndexFile(handler: Pid, size: Int, file_path: String)
+  IndexFile(handler: Subject(fs.Message), size: Int, file_path: String)
 }
 
 pub fn open(path: String) -> Result(IndexFile, file.Reason) {
@@ -54,9 +54,8 @@ pub fn add(
       let index = Index(0, event_size + event_size_bytes, file_id)
       #(index_to_binary(index), index)
     }
-    _ -> {
-      let assert Ok(_) =
-        fs.position(index_file.handler, fs.Eof(-index_size_bytes))
+    size -> {
+      let last_entry_offset = size - index_size_bytes
       // FIXME: https://github.com/gleam-lang/gleam/issues/2166
       let offset_size_bits = offset_size_bits
       let event_size_bits = event_size_bits
@@ -66,13 +65,14 @@ pub fn add(
         offset:size(offset_size_bits),
         prev_size:size(event_size_bits),
         _file_id:size(file_id_size_bits),
-      >>) = last_entry_for_file(index_file.handler, file_id)
+      >>) = last_entry_for_file(index_file.handler, last_entry_offset, file_id)
       let offset = offset + prev_size
       let index = Index(offset, event_size + event_size_bytes, file_id)
       #(index_to_binary(index), index)
     }
   }
-  let assert Ok(_) = fs.write(index_file.handler, index_content)
+  let assert Ok(_) =
+    fs.write(index_file.handler, fs.Bof(index.offset), index_content)
   let index_file =
     IndexFile(..index_file, size: index_file.size + index_size_bytes)
   #(index, index_file)
@@ -92,7 +92,8 @@ fn index_to_binary(index: Index) -> BitString {
 }
 
 fn last_entry_for_file(
-  index_file: Pid,
+  index_file: Subject(fs.Message),
+  base_offset: Int,
   file_id: Int,
 ) -> Result(BitString, file.Reason) {
   // FIXME: https://github.com/gleam-lang/gleam/issues/2166
@@ -104,13 +105,18 @@ fn last_entry_for_file(
     offset:size(offset_size_bits),
     size:size(event_size_bits),
     new_file_id:size(file_id_size_bits),
-  >>) = fs.read(index_file, index_size_bytes)
+  >>) = fs.read(index_file, fs.Bof(base_offset), index_size_bytes)
   case new_file_id == file_id {
     True -> Ok(index_to_binary(Index(offset, size, file_id)))
     False -> {
-      case fs.position(index_file, fs.Cur(-2 * index_size_bytes)) {
-        Ok(_) -> last_entry_for_file(index_file, file_id)
-        Error(file.Einval) -> Ok(index_to_binary(Index(0, 0, file_id)))
+      case base_offset {
+        0 -> Ok(index_to_binary(Index(0, 0, file_id)))
+        _ ->
+          last_entry_for_file(
+            index_file,
+            base_offset - index_size_bytes,
+            file_id,
+          )
       }
     }
   }
@@ -121,17 +127,19 @@ pub fn count(index_file: IndexFile) -> Int {
   result
 }
 
-pub fn set_pos(index_file: IndexFile, index: Int) -> Result(Int, file.Reason) {
-  fs.position(index_file.handler, fs.Bof(index * index_size_bytes))
-}
-
-pub fn get_next(index_file: IndexFile) -> Result(Index, file.Reason) {
+pub fn get(index_file: IndexFile, index: Int) -> Result(Index, file.Reason) {
   // FIXME: https://github.com/gleam-lang/gleam/issues/2166
   let offset_size_bits = offset_size_bits
   let event_size_bits = event_size_bits
   let file_id_size_bits = file_id_size_bits
   // end FIXME
-  case fs.read(index_file.handler, index_size_bytes) {
+  case
+    fs.read(
+      index_file.handler,
+      fs.Bof(index * index_size_bytes),
+      index_size_bytes,
+    )
+  {
     read.Ok(<<
       offset:size(offset_size_bits),
       size:size(event_size_bits),
@@ -139,15 +147,5 @@ pub fn get_next(index_file: IndexFile) -> Result(Index, file.Reason) {
     >>) -> Ok(Index(offset, size, file_id))
     read.Eof -> Error(file.Espipe)
     _ -> Error(file.Einval)
-  }
-}
-
-pub fn get(index_file: IndexFile, index: Int) -> Result(Index, file.Reason) {
-  case count(index_file) > index && index >= 0 {
-    True -> {
-      let assert Ok(_) = set_pos(index_file, index)
-      get_next(index_file)
-    }
-    False -> Error(file.Einval)
   }
 }

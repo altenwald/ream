@@ -67,7 +67,7 @@ pub fn benchmark_set_test() {
   let path = base_path <> "benchmark_set"
   let _ = file.recursive_delete(path)
 
-  let kv = kv.open("build/kv_test", "benchmark_set", 10, 4096, 40_960)
+  let kv = kv.open("build/kv_test", "benchmark_set", 15, 4096, 40_960)
   let assert #(time, Ok(kv)) =
     tc(fn() {
       list.range(0, 999)

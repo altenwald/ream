@@ -74,16 +74,14 @@ fn do_open_files(
   case index.count(index_file) {
     0 -> Ok(acc)
     num_of_events -> {
-      let _ = index.set_pos(index_file, 0)
-
       let files =
         num_of_events - 1
         |> iterator.range(0, _)
         |> iterator.fold(
           from: acc,
-          with: fn(acc, _idx) {
+          with: fn(acc, idx) {
             let assert Ok(Index(_offset, _size, file_id)) =
-              index.get_next(index_file)
+              index.get(index_file, idx)
             case map.has_key(acc, file_id) {
               True -> acc
               False -> {

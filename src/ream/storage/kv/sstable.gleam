@@ -1,5 +1,5 @@
 import gleam/erlang/file
-import gleam/erlang/process.{Pid}
+import gleam/erlang/process.{Subject}
 import gleam/map.{Map}
 import ream/storage/file as fs
 import ream/storage/file/read
@@ -17,14 +17,13 @@ const header_size = 38
 
 pub fn flush(mem_table: MemTable, path: String) -> Result(Bool, file.Reason) {
   let assert Ok(True) = fs.recursive_make_directory(fs.dirname(path))
-  let assert Ok(file) =
-    fs.open(path, [fs.Write, fs.Raw, fs.DelayedWrite(mem_table.max_size, 1500)])
+  let assert Ok(file) = fs.open(path, [fs.Write])
   // TODO maybe suggest the inclusion of `map.each/2` for gleam/stdlib
   map.filter(
     mem_table.entries,
     fn(_key, entry) {
       let content = memtable.entry_to_bitstring(entry)
-      let assert Ok(_) = fs.write(file, content)
+      let assert Ok(_) = fs.write(file, fs.Cur(0), content)
       False
     },
   )
@@ -33,14 +32,14 @@ pub fn flush(mem_table: MemTable, path: String) -> Result(Bool, file.Reason) {
 }
 
 pub fn load(path: String, max_size: Int) -> Result(MemTable, file.Reason) {
-  let assert Ok(file) = fs.open(path, [fs.Read, fs.Raw, fs.ReadAhead(max_size)])
+  let assert Ok(file) = fs.open(path, [fs.Read])
   let assert Ok(entries) = read_entries(file, map.new())
   let assert Ok(_) = fs.close(file)
   Ok(memtable.from_entries(entries, max_size))
 }
 
 fn read_entries(
-  file: Pid,
+  file: Subject(fs.Message),
   entries: Map(Int, MemTableEntry),
 ) -> Result(Map(Int, MemTableEntry), file.Reason) {
   // FIXME: https://github.com/gleam-lang/gleam/issues/2166
@@ -49,14 +48,14 @@ fn read_entries(
   let file_id_size_bits = file_id_size_bits
   let offset_size_bits = offset_size_bits
   // end FIXME
-  case fs.read(file, header_size) {
+  case fs.read(file, fs.Cur(0), header_size) {
     read.Ok(<<
       key_hash:size(key_hash_size_bits),
       key_size:size(key_size_bits),
       file_id:size(file_id_size_bits),
       offset:size(offset_size_bits),
     >>) -> {
-      let assert read.Ok(key_string) = fs.read(file, key_size)
+      let assert read.Ok(key_string) = fs.read(file, fs.Cur(0), key_size)
       let #(_key, entry) =
         memtable.bitstring_to_entry(<<
           key_hash:size(key_hash_size_bits),

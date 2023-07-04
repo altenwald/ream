@@ -6,7 +6,7 @@
 //// - n bytes: the event
 
 import gleam/erlang/file
-import gleam/erlang/process.{Pid}
+import gleam/erlang/process.{Subject}
 import gleam/bit_string
 import gleam/result.{try}
 import ream/storage/file as fs
@@ -20,7 +20,7 @@ import ream/uuid
 /// - `size`: the size of the file.
 /// - `file_path`: the path of the file.
 pub type EventFile {
-  EventFile(id: Int, handler: Pid, size: Int, file_path: String)
+  EventFile(id: Int, handler: Subject(fs.Message), size: Int, file_path: String)
 }
 
 /// Create a new event file. It creates a new file with a random UUID as the
@@ -69,8 +69,7 @@ pub fn write(event_file: EventFile, event_data: BitString) -> EventFile {
   let event_size_bytes = event_size_bits / 8
   let data_size = bit_string.byte_size(event_data) + event_size_bytes
   let data = <<data_size:size(event_size_bits), event_data:bit_string>>
-  let assert Ok(_) = fs.position(event_file.handler, fs.Eof(0))
-  let assert Ok(_) = fs.write(event_file.handler, data)
+  let assert Ok(_) = fs.write(event_file.handler, fs.Eof(0), data)
   let data_size = bit_string.byte_size(data)
   EventFile(..event_file, size: event_file.size + data_size)
 }
@@ -85,10 +84,11 @@ pub fn read(
 ) -> Result(BitString, file.Reason) {
   let event_size_bits = index.event_size_bits
   let event_size_bytes = event_size_bits / 8
-  let assert Ok(_) = fs.position(event_file.handler, fs.Bof(offset))
   let assert read.Ok(<<size:size(event_size_bits)>>) =
-    fs.read(event_file.handler, event_size_bytes)
+    fs.read(event_file.handler, fs.Bof(offset), event_size_bytes)
   let content_size = size - event_size_bytes
-  let assert read.Ok(data) = fs.read(event_file.handler, content_size)
+  let content_offset = offset + event_size_bytes
+  let assert read.Ok(data) =
+    fs.read(event_file.handler, fs.Bof(content_offset), content_size)
   Ok(data)
 }

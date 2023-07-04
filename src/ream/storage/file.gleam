@@ -6,8 +6,9 @@
 //// why we are using the `storage/file/read`, `storage/file/write` and
 //// `storage/file/close` modules.
 
-import gleam/erlang/process.{Pid}
+import gleam/erlang/process.{Pid, Subject}
 import gleam/erlang/file
+import gleam/otp/actor.{InitFailed}
 import ream/storage/file/read
 import ream/storage/file/close
 import ream/storage/file/write
@@ -52,45 +53,148 @@ pub type Location {
   Eof(Int)
 }
 
-/// The open function opens a file in the given mode. The function is returning
-/// a Pid that can be used to read and write in the file.
-pub fn open(filename: String, mode: List(Mode)) -> Result(Pid, file.Reason) {
-  do_open(filename, [Binary, ..mode])
+pub type Message {
+  Shutdown(from: Subject(Result(Bool, file.Reason)))
+  ReadMessage(from: Subject(read.Result), offset: Location, size: Int)
+  WriteMessage(
+    from: Subject(Result(Bool, file.Reason)),
+    offset: Location,
+    data: BitString,
+  )
 }
 
-external fn do_open(
+pub type State {
+  State(pid: Pid)
+}
+
+/// The open function opens a file in the given mode. The function is returning
+/// a Pid that can be used to read and write in the file.
+pub fn open(
+  filename: String,
+  mode: List(Mode),
+) -> Result(Subject(Message), file.Reason) {
+  case
+    actor.start_spec(actor.Spec(
+      init: fn() { init(filename, mode) },
+      init_timeout: 5000,
+      loop: handle_message,
+    ))
+  {
+    Ok(subject) -> Ok(subject)
+    Error(actor.InitTimeout) -> Error(file.Ebusy)
+    Error(actor.InitFailed(_reason)) -> Error(file.Enoent)
+    Error(actor.InitCrashed(_reason)) -> Error(file.Einval)
+  }
+}
+
+fn init(filename: String, mode: List(Mode)) -> actor.InitResult(State, Message) {
+  case file_open(filename, [Binary, Raw, ..mode]) {
+    Ok(pid) -> actor.Ready(State(pid), process.new_selector())
+    Error(_reason) -> actor.Failed("cannot open file " <> filename)
+  }
+}
+
+external fn file_open(
   filename: String,
   mode: List(Mode),
 ) -> Result(Pid, file.Reason) =
   "file" "open"
 
-/// The read function is reading the given number of bytes from the file.
-/// The function is returning a tuple with the result of the operation and the
-/// data read.
-pub external fn read(io_device: Pid, bytes: Int) -> read.Result =
-  "file" "read"
+pub fn handle_message(message: Message, state: State) -> actor.Next(State) {
+  case message {
+    Shutdown(from) -> {
+      let result = do_close(state.pid)
+      process.send(from, result)
+      actor.Stop(process.Normal)
+    }
+
+    ReadMessage(from, offset, bytes) -> {
+      let result = do_read(state.pid, offset, bytes)
+      process.send(from, result)
+      actor.Continue(state)
+    }
+
+    WriteMessage(from, offset, data) -> {
+      let result = do_write(state.pid, offset, data)
+      process.send(from, result)
+      actor.Continue(state)
+    }
+  }
+}
 
 /// The close function is closing the file. The function is returning true
 /// if the file was closed successfully.
-pub fn close(io_device: Pid) -> Result(Bool, file.Reason) {
-  case do_close(io_device) {
+pub fn close(io_device: Subject(Message)) -> Result(Bool, file.Reason) {
+  process.call(io_device, Shutdown, 5000)
+}
+
+fn do_close(io_device: Pid) -> Result(Bool, file.Reason) {
+  case file_close(io_device) {
     close.Ok -> Ok(True)
     close.Error(reason) -> Error(reason)
   }
 }
 
-external fn do_close(io_device: Pid) -> close.Result =
+external fn file_close(io_device: Pid) -> close.Result =
   "file" "close"
 
-/// The write function is writing the given data in the file.
-pub fn write(io_device: Pid, data: BitString) -> Result(Bool, file.Reason) {
-  case do_write(io_device, data) {
-    write.Ok -> Ok(True)
-    write.Error(reason) -> Error(reason)
+/// The read function is reading the given number of bytes from the file.
+/// The function is returning a tuple with the result of the operation and the
+/// data read.
+pub fn read(
+  io_device: Subject(Message),
+  offset: Location,
+  bytes: Int,
+) -> read.Result {
+  actor.call(io_device, ReadMessage(_, offset, bytes), 5000)
+}
+
+fn do_read(io_device: Pid, offset: Location, bytes: Int) -> read.Result {
+  case offset {
+    Cur(0) -> file_read(io_device, bytes)
+    _ -> {
+      case position(io_device, offset) {
+        Ok(_) -> file_read(io_device, bytes)
+        Error(reason) -> read.Error(reason)
+      }
+    }
   }
 }
 
-external fn do_write(io_device: Pid, data: BitString) -> write.Result =
+external fn file_read(io_device: Pid, bytes: Int) -> read.Result =
+  "file" "read"
+
+/// The write function is writing the given data in the file.
+pub fn write(
+  io_device: Subject(Message),
+  offset: Location,
+  data: BitString,
+) -> Result(Bool, file.Reason) {
+  actor.call(io_device, WriteMessage(_, offset, data), 5000)
+}
+
+fn do_write(
+  io_device: Pid,
+  offset: Location,
+  data: BitString,
+) -> Result(Bool, file.Reason) {
+  case offset {
+    Cur(0) -> {
+      case file_write(io_device, data) {
+        write.Ok -> Ok(True)
+        write.Error(reason) -> Error(reason)
+      }
+    }
+    _ -> {
+      case position(io_device, offset) {
+        Ok(_) -> do_write(io_device, Cur(0), data)
+        Error(reason) -> Error(reason)
+      }
+    }
+  }
+}
+
+external fn file_write(io_device: Pid, data: BitString) -> write.Result =
   "file" "write"
 
 /// The dirname function is returning the directory name of the given filename.
@@ -112,7 +216,7 @@ pub external fn join(parts: List(String)) -> String =
   "filename" "join"
 
 /// The position function is returning the current position in the file.
-pub external fn position(
+external fn position(
   io_device: Pid,
   location: Location,
 ) -> Result(Int, file.Reason) =
