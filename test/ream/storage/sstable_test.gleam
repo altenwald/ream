@@ -1,9 +1,9 @@
 import gleam/erlang/file
 import gleam/option.{None}
 import ream/storage/file as fs
-import ream/storage/kv/value.{Value}
-import ream/storage/kv/memtable
-import ream/storage/kv/sstable
+import ream/storage/memtable
+import ream/storage/sstable
+import ream/storage/value.{Value}
 
 const base_path = "build/sstable_test/"
 

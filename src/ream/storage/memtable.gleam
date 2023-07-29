@@ -7,7 +7,7 @@ import gleam/bit_string
 import gleam/list
 import gleam/map.{Map}
 import gleam/option.{None}
-import ream/storage/kv/value.{Value}
+import ream/storage/value.{Value}
 
 /// MemTable holds a sorted list of the latest written records. Generally, we
 /// could implement a sorted list algorithm like skip list, but for simplicity
@@ -105,8 +105,8 @@ pub fn contains(mem_table: MemTable, key: String) -> Bool {
 }
 
 /// generates a hash for the given key.
-pub external fn hash(key: String) -> Int =
-  "erlang" "phash2"
+@external(erlang, "erlang", "phash2")
+pub fn hash(key key: String) -> Int
 
 /// set sets the given key to the given value in the MemTable. If the MemTable
 /// reaches its capacity, it returns an error. Otherwise, it returns the updated
@@ -176,11 +176,9 @@ pub fn get(mem_table: MemTable, key: String) -> Result(Value, Nil) {
   case map.get(mem_table.entries, hash(key)) {
     Ok(MemTableEntry(key: stored_key, value: value)) if key == stored_key ->
       Ok(value)
-    Ok(MemTableEntry(key: _stored_key, value: _)) -> {
-      // TODO better panic messages when https://github.com/gleam-lang/gleam/issues/2176 is fixed
-      // let errmsg =
-      //   "collision hash function between " <> key <> " and " <> stored_key
-      panic
+    Ok(MemTableEntry(key: stored_key, value: _)) -> {
+      panic as "collision hash function between " <> key <> " and " <> stored_key
+      Error(Nil)
     }
     Error(Nil) -> Error(Nil)
   }
@@ -256,14 +254,14 @@ fn calculate_size(entry: MemTableEntry) -> Int {
 /// get_bounds returns the lower and higher bounds of the MemTable. If the
 /// MemTable is empty, it returns `#(0, 0)`.
 pub fn get_bounds(mem_table: MemTable) -> #(Int, Int) {
-  case map.to_list(mem_table.entries) {
+  case map.keys(mem_table.entries) {
     [] -> #(0, 0)
-    [#(k, _), ..entries] -> {
+    [k, ..keys] -> {
       list.fold(
-        entries,
+        keys,
         #(k, k),
-        fn(acc: #(Int, Int), entry) {
-          #(get_lower(acc.0, entry.0), get_higher(acc.1, entry.0))
+        fn(min_max: #(Int, Int), key) {
+          #(get_lower(min_max.0, key), get_higher(min_max.1, key))
         },
       )
     }

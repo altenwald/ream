@@ -1,7 +1,7 @@
 import gleam/map
 import gleam/option.{None}
-import ream/storage/kv/memtable.{CapacityExceeded, MemTableEntry}
-import ream/storage/kv/value.{Value}
+import ream/storage/memtable.{CapacityExceeded, MemTableEntry}
+import ream/storage/value.{Value}
 
 pub fn memtable_happy_path_test() {
   let mem_table = memtable.new(500)

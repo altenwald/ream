@@ -1,6 +1,7 @@
 import gleam/erlang/file
 import gleam/bit_string
 import gleam/list
+import gleam/string
 import ream/storage/file as fs
 
 pub type Size {
@@ -17,15 +18,30 @@ pub type DataType {
   Timestamp
 }
 
+pub type FieldId =
+  Int
+
 pub type Field {
-  Field(id: Int, name: String, data_type: DataType, nilable: Bool)
+  Field(id: FieldId, name: String, data_type: DataType, nilable: Bool)
+}
+
+pub type Index {
+  Unique(List(FieldId))
+  Index(List(FieldId))
 }
 
 pub type Table {
-  Table(name: String, fields: List(Field))
+  Table(
+    name: String,
+    fields: List(Field),
+    primary_key: List(FieldId),
+    indexes: List(Index),
+  )
 }
 
 pub const name_size_bits = 8
+
+pub const field_id_size_bits = 16
 
 pub fn flush(table: Table, path: String) -> Result(Nil, file.Reason) {
   let assert Ok(True) = fs.recursive_make_directory(fs.dirname(path))
@@ -42,20 +58,25 @@ pub fn load(path: String) -> Result(Table, file.Reason) {
 pub fn to_bitstring(table: Table) -> BitString {
   // FIXME: https://github.com/gleam-lang/gleam/issues/2166
   let name_size_bits = name_size_bits
+  let field_id_size_bits = field_id_size_bits
   // end FIXME
-  // FIXME when using Gleam 0.29.2 or later
-  // let name_size = string.byte_size(table.name)
-  let name_size =
-    bit_string.from_string(table.name)
-    |> bit_string.byte_size()
-  // end FIXME
+  let name_size = string.byte_size(table.name)
+  let num_fields = list.length(table.fields)
   let fields =
     table.fields
     |> list.fold(
-      <<>>,
+      <<num_fields:size(field_id_size_bits)>>,
       fn(acc, field) { bit_string.append(acc, field_to_bitstring(field)) },
     )
-  <<name_size:size(name_size_bits), table.name:utf8, fields:bit_string>>
+  let primary_keys = field_ids_to_bitstring(table.primary_key)
+  let indexes = indexes_to_bitstring(table.indexes)
+  <<
+    name_size:size(name_size_bits),
+    table.name:utf8,
+    fields:bit_string,
+    primary_keys:bit_string,
+    indexes:bit_string,
+  >>
 }
 
 fn field_type_to_bitstring(data_type: DataType) -> BitString {
@@ -89,22 +110,106 @@ fn field_to_bitstring(field: Field) -> BitString {
   >>
 }
 
+fn field_ids_to_bitstring(ids: List(FieldId)) -> BitString {
+  // FIXME: https://github.com/gleam-lang/gleam/issues/2166
+  let field_id_size_bits = field_id_size_bits
+  // end FIXME
+  let ids_num = list.length(ids)
+  list.fold(
+    ids,
+    <<ids_num:size(field_id_size_bits)>>,
+    fn(acc, id) { <<acc:bit_string, id:size(field_id_size_bits)>> },
+  )
+}
+
+fn indexes_to_bitstring(indexes: List(Index)) -> BitString {
+  // FIXME: https://github.com/gleam-lang/gleam/issues/2166
+  let field_id_size_bits = field_id_size_bits
+  // end FIXME
+  let idx_num = list.length(indexes)
+  list.fold(
+    indexes,
+    <<idx_num:size(field_id_size_bits)>>,
+    fn(acc, index) {
+      case index {
+        Unique(field_ids) -> {
+          let field_ids = field_ids_to_bitstring(field_ids)
+          <<acc:bit_string, 0:8, field_ids:bit_string>>
+        }
+        Index(field_ids) -> {
+          let field_ids = field_ids_to_bitstring(field_ids)
+          <<acc:bit_string, 1:8, field_ids:bit_string>>
+        }
+      }
+    },
+  )
+}
+
 pub fn from_bitstring(data: BitString) -> Table {
   // FIXME: https://github.com/gleam-lang/gleam/issues/2166
   let name_size_bits = name_size_bits
+  let field_id_size_bits = field_id_size_bits
   // end FIXME
   let <<name_size:size(name_size_bits), rest:bit_string>> = data
   let name_size_bits = name_size * 8
-  let <<table_name:size(name_size_bits)-bit_string, fields:bit_string>> = rest
+  let <<
+    table_name:size(name_size_bits)-bit_string,
+    num_fields:size(field_id_size_bits),
+    rest:bit_string,
+  >> = rest
+  let #(fields, <<num_ids:size(field_id_size_bits), rest:bit_string>>) =
+    fields_from_bitstring(num_fields, rest, 1, [])
+  let #(ids, <<num_idx:size(field_id_size_bits), rest:bit_string>>) =
+    ids_from_bitstring(num_ids, rest, [])
+  let #(idx, <<>>) = indexes_from_bitstring(num_idx, rest, [])
   let assert Ok(name) = bit_string.to_string(table_name)
-  Table(name: name, fields: fields_from_bitstring(fields, 1, []))
+  Table(name: name, fields: fields, primary_key: ids, indexes: idx)
+}
+
+fn indexes_from_bitstring(
+  num_idx: Int,
+  data: BitString,
+  acc: List(Index),
+) -> #(List(Index), BitString) {
+  // FIXME: https://github.com/gleam-lang/gleam/issues/2166
+  let field_id_size_bits = field_id_size_bits
+  // end FIXME
+  case num_idx, data {
+    0, _ -> #(list.reverse(acc), data)
+    _, <<0:8, num_ids:size(field_id_size_bits), rest:bit_string>> -> {
+      let #(ids, rest) = ids_from_bitstring(num_ids, rest, [])
+      indexes_from_bitstring(num_idx - 1, rest, [Unique(ids), ..acc])
+    }
+    _, <<1:8, num_ids:size(field_id_size_bits), rest:bit_string>> -> {
+      let #(ids, rest) = ids_from_bitstring(num_ids, rest, [])
+      indexes_from_bitstring(num_idx - 1, rest, [Index(ids), ..acc])
+    }
+  }
+}
+
+fn ids_from_bitstring(
+  num_ids: Int,
+  data: BitString,
+  acc: List(FieldId),
+) -> #(List(FieldId), BitString) {
+  // FIXME: https://github.com/gleam-lang/gleam/issues/2166
+  let field_id_size_bits = field_id_size_bits
+  // end FIXME
+  case num_ids {
+    0 -> #(list.reverse(acc), data)
+    _ -> {
+      let <<id:size(field_id_size_bits), rest:bit_string>> = data
+      ids_from_bitstring(num_ids - 1, rest, [id, ..acc])
+    }
+  }
 }
 
 fn fields_from_bitstring(
+  num_fields: Int,
   data: BitString,
   id: Int,
   acc: List(Field),
-) -> List(Field) {
+) -> #(List(Field), BitString) {
   // FIXME: https://github.com/gleam-lang/gleam/issues/2166
   let name_size_bits = name_size_bits
   // end FIXME
@@ -128,9 +233,9 @@ fn fields_from_bitstring(
         0 -> False
       },
     )
-  case rest {
-    <<>> -> list.reverse([field, ..acc])
-    _ -> fields_from_bitstring(rest, id + 1, [field, ..acc])
+  case num_fields - id {
+    0 -> #(list.reverse([field, ..acc]), rest)
+    _ -> fields_from_bitstring(num_fields, rest, id + 1, [field, ..acc])
   }
 }
 

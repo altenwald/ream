@@ -44,5 +44,5 @@ fn to_hex(n: Int, size: Int) -> String {
   |> string.pad_left(to: size, with: "0")
 }
 
-external fn crypto_strong_rand_bytes(Int) -> BitString =
-  "crypto" "strong_rand_bytes"
+@external(erlang, "crypto", "strong_rand_bytes")
+fn crypto_strong_rand_bytes(a: Int) -> BitString

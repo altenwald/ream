@@ -2,7 +2,7 @@ import gleam/list
 import gleam/erlang/file
 import gleam/option.{None, Some}
 import gleam/result
-import ream/storage/kv/value.{Value, ValueFileInfo}
+import ream/storage/value.{Value, ValueFileInfo}
 
 const base_path = "build/value_test/kv/"
 

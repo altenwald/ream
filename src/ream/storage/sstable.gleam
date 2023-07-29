@@ -3,7 +3,8 @@ import gleam/erlang/process.{Subject}
 import gleam/map.{Map}
 import ream/storage/file as fs
 import ream/storage/file/read
-import ream/storage/kv/memtable.{MemTable, MemTableEntry}
+import ream/storage/memtable.{MemTable, MemTableEntry}
+import ream/uuid
 
 pub const key_hash_size_bits = 128
 
@@ -14,6 +15,20 @@ pub const file_id_size_bits = 128
 pub const offset_size_bits = 32
 
 const header_size = 38
+
+pub type Kind {
+  Key
+  Schema
+}
+
+pub fn path(path: String, kind: Kind, id: Int) -> String {
+  let parts = uuid.parts(uuid.from_int(id))
+  let middle_part = case kind {
+    Key -> "key"
+    Schema -> "schema"
+  }
+  fs.join([path, middle_part, ..parts])
+}
 
 pub fn flush(mem_table: MemTable, path: String) -> Result(Bool, file.Reason) {
   let assert Ok(True) = fs.recursive_make_directory(fs.dirname(path))

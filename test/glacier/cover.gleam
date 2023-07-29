@@ -31,19 +31,19 @@ fn recompile_for_coverage(module) -> Atom {
   }
 }
 
-external fn do_cover_start() -> Nil =
-  "cover_ffi" "start_coverage"
+@external(erlang, "cover_ffi", "start_coverage")
+fn do_cover_start() -> Nil
 
-external fn do_cover_stop() -> Nil =
-  "cover_ffi" "stop_coverage"
+@external(erlang, "cover_ffi", "stop_coverage")
+fn do_cover_stop() -> Nil
 
-external fn do_cover_recompile_module(module: Atom) -> Result(Nil, String) =
-  "cover_ffi" "compile_coverage"
+@external(erlang, "cover_ffi", "compile_coverage")
+fn do_cover_recompile_module(module module: Atom) -> Result(Nil, String)
 
-external fn find_files(matching: String, in: String) -> List(String) =
-  "cover_ffi" "find_files"
+@external(erlang, "cover_ffi", "find_files")
+fn find_files(matching matching: String, in in: String) -> List(String)
 
-external type Atom
+type Atom
 
 type Encoding {
   Utf8
@@ -53,8 +53,8 @@ pub fn cover_stop() -> Nil {
   do_cover_stop()
 }
 
-external fn dangerously_convert_string_to_atom(String, Encoding) -> Atom =
-  "erlang" "binary_to_atom"
+@external(erlang, "erlang", "binary_to_atom")
+fn dangerously_convert_string_to_atom(a: String, b: Encoding) -> Atom
 
 pub fn main(opts: List(GleeunitProgressOption)) -> Nil {
   let options = [Verbose, NoTty, Report(#(GleeunitProgress, opts))]
@@ -82,8 +82,8 @@ pub fn main(opts: List(GleeunitProgressOption)) -> Nil {
   halt(code)
 }
 
-external fn halt(Int) -> Nil =
-  "erlang" "halt"
+@external(erlang, "erlang", "halt")
+fn halt(a: Int) -> Nil
 
 pub type GleeunitProgressOption {
   Colored(Bool)
@@ -101,5 +101,5 @@ type ReportModuleName {
   GleeunitProgress
 }
 
-external fn run_eunit(List(Atom), List(EunitOption)) -> Dynamic =
-  "eunit" "test"
+@external(erlang, "eunit", "test")
+fn run_eunit(a: List(Atom), b: List(EunitOption)) -> Dynamic

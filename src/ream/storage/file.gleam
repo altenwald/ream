@@ -94,11 +94,11 @@ fn init(filename: String, mode: List(Mode)) -> actor.InitResult(State, Message) 
   }
 }
 
-external fn file_open(
-  filename: String,
-  mode: List(Mode),
-) -> Result(Pid, file.Reason) =
-  "file" "open"
+@external(erlang, "file", "open")
+fn file_open(filename filename: String, mode mode: List(Mode)) -> Result(
+  Pid,
+  file.Reason,
+)
 
 pub fn handle_message(message: Message, state: State) -> actor.Next(State) {
   case message {
@@ -135,8 +135,8 @@ fn do_close(io_device: Pid) -> Result(Bool, file.Reason) {
   }
 }
 
-external fn file_close(io_device: Pid) -> close.Result =
-  "file" "close"
+@external(erlang, "file", "close")
+fn file_close(io_device io_device: Pid) -> close.Result
 
 /// The read function is reading the given number of bytes from the file.
 /// The function is returning a tuple with the result of the operation and the
@@ -161,8 +161,8 @@ fn do_read(io_device: Pid, offset: Location, bytes: Int) -> read.Result {
   }
 }
 
-external fn file_read(io_device: Pid, bytes: Int) -> read.Result =
-  "file" "read"
+@external(erlang, "file", "read")
+fn file_read(io_device io_device: Pid, bytes bytes: Int) -> read.Result
 
 /// The write function is writing the given data in the file.
 pub fn write(
@@ -194,33 +194,33 @@ fn do_write(
   }
 }
 
-external fn file_write(io_device: Pid, data: BitString) -> write.Result =
-  "file" "write"
+@external(erlang, "file", "write")
+fn file_write(io_device io_device: Pid, data data: BitString) -> write.Result
 
 /// The dirname function is returning the directory name of the given filename.
 /// As an example, if the filename is `/tmp/foo/bar.txt`, the function will
 /// return `/tmp/foo`.
-pub external fn dirname(filename: String) -> String =
-  "filename" "dirname"
+@external(erlang, "filename", "dirname")
+pub fn dirname(filename filename: String) -> String
 
 /// The basename function is returning the base name of the given filename.
 /// As an example, if the filename is `/tmp/foo/bar.txt`, the function will
 /// return `bar.txt`.
-pub external fn basename(filename: String) -> String =
-  "filename" "basename"
+@external(erlang, "filename", "basename")
+pub fn basename(filename filename: String) -> String
 
 /// The join function is joining the given parts to create a filename.
 /// As an example, if the parts are `["/tmp", "foo", "bar.txt"]`, the function
 /// will return `/tmp/foo/bar.txt`.
-pub external fn join(parts: List(String)) -> String =
-  "filename" "join"
+@external(erlang, "filename", "join")
+pub fn join(parts parts: List(String)) -> String
 
 /// The position function is returning the current position in the file.
-external fn position(
-  io_device: Pid,
-  location: Location,
-) -> Result(Int, file.Reason) =
-  "file" "position"
+@external(erlang, "file", "position")
+fn position(io_device io_device: Pid, location location: Location) -> Result(
+  Int,
+  file.Reason,
+)
 
 /// The recursive make directory function let us to create a directory and
 /// all the parent directories if they don't exist.

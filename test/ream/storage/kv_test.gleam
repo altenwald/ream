@@ -1,5 +1,6 @@
 import gleam/erlang/file
 import gleam/int
+import gleam/io
 import gleam/list
 import ream/storage/kv
 
@@ -79,9 +80,10 @@ pub fn benchmark_set_test() {
         },
       )
     })
+  io.debug(#("benchmark time", time))
   let assert True = time > 0 && time < 500_000
   let assert Ok(Nil) = kv.close(kv)
 }
 
-external fn tc(f: fn() -> Result(kv.KV, Nil)) -> #(Int, Result(kv.KV, Nil)) =
-  "timer" "tc"
+@external(erlang, "timer", "tc")
+fn tc(f f: fn() -> Result(kv.KV, Nil)) -> #(Int, Result(kv.KV, Nil))
