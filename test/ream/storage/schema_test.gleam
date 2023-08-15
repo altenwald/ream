@@ -1,5 +1,6 @@
 import gleam/erlang/file
 import ream/storage/schema
+import ream/storage/schema/data_type
 import ream/storage/schema/table.{Field, Table}
 import ream/storage/file as fs
 
@@ -35,6 +36,19 @@ pub fn create_test() {
       max_value_size,
       path,
     )
+
+  let assert Ok(accounts) =
+    schema.insert(
+      accounts,
+      [
+        #("id", data_type.Integer(1)),
+        #("name", data_type.String("Bank")),
+        #("debit", data_type.Decimal(100, 0)),
+        #("balance", data_type.Decimal(100, 0)),
+        #("inserted_at", data_type.Timestamp(1_690_785_424_366_972)),
+      ],
+    )
+
   let assert Ok(Nil) = schema.close(accounts)
 
   let assert True =

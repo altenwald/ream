@@ -48,15 +48,17 @@ pub fn flush(
   sstable_kind: sstable.Kind,
   ranges: Map(Int, MemTableRange),
 ) -> Result(Bool, file.Reason) {
-  use kv_file <- try(fs.open(fs.join([base_path, "index"]), [fs.Write]))
+  let assert Ok(kv_file) = fs.open(fs.join([base_path, "index"]), [fs.Write])
   let memtable_ranges = map.to_list(ranges)
-  use Nil <- try(write_memtable_ranges(
-    kv_file,
-    sstable_kind,
-    base_path,
-    memtable_ranges,
-  ))
-  fs.close(kv_file)
+  case
+    write_memtable_ranges(kv_file, sstable_kind, base_path, memtable_ranges)
+  {
+    Ok(_) -> fs.close(kv_file)
+    Error(error) -> {
+      use _ <- try(fs.close(kv_file))
+      Error(error)
+    }
+  }
 }
 
 fn write_memtable_ranges(

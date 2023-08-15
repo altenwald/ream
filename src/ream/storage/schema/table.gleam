@@ -1,15 +1,17 @@
 import gleam/erlang/file
 import gleam/bit_string
 import gleam/list
+import gleam/result.{try}
 import gleam/string
 import ream/storage/file as fs
+import ream/storage/schema/data_type.{DataType}
 
 pub type Size {
   Size(Int)
   Unlimited
 }
 
-pub type DataType {
+pub type FieldType {
   Integer
   Float
   Decimal
@@ -18,11 +20,20 @@ pub type DataType {
   Timestamp
 }
 
+pub type DataSet {
+  DataSet(field: Field, data: DataType)
+}
+
+pub type DataError {
+  FieldNotFound(String)
+  UnmatchFieldType(FieldType, DataType)
+}
+
 pub type FieldId =
   Int
 
 pub type Field {
-  Field(id: FieldId, name: String, data_type: DataType, nilable: Bool)
+  Field(id: FieldId, name: String, field_type: FieldType, nilable: Bool)
 }
 
 pub type Index {
@@ -56,10 +67,6 @@ pub fn load(path: String) -> Result(Table, file.Reason) {
 }
 
 pub fn to_bitstring(table: Table) -> BitString {
-  // FIXME: https://github.com/gleam-lang/gleam/issues/2166
-  let name_size_bits = name_size_bits
-  let field_id_size_bits = field_id_size_bits
-  // end FIXME
   let name_size = string.byte_size(table.name)
   let num_fields = list.length(table.fields)
   let fields =
@@ -79,8 +86,8 @@ pub fn to_bitstring(table: Table) -> BitString {
   >>
 }
 
-fn field_type_to_bitstring(data_type: DataType) -> BitString {
-  case data_type {
+fn field_type_to_bitstring(field_type: FieldType) -> BitString {
+  case field_type {
     Integer -> <<0:8, 0:8>>
     Float -> <<1:8, 0:8>>
     Decimal -> <<2:8, 0:8>>
@@ -93,16 +100,13 @@ fn field_type_to_bitstring(data_type: DataType) -> BitString {
 }
 
 fn field_to_bitstring(field: Field) -> BitString {
-  // FIXME: https://github.com/gleam-lang/gleam/issues/2166
-  let name_size_bits = name_size_bits
-  // end FIXME
   let field_name_size_bytes =
     bit_string.from_string(field.name)
     |> bit_string.byte_size()
   <<
     field_name_size_bytes:size(name_size_bits),
     field.name:utf8,
-    field_type_to_bitstring(field.data_type):bit_string,
+    field_type_to_bitstring(field.field_type):bit_string,
     case field.nilable {
       True -> 1
       False -> 0
@@ -111,9 +115,6 @@ fn field_to_bitstring(field: Field) -> BitString {
 }
 
 fn field_ids_to_bitstring(ids: List(FieldId)) -> BitString {
-  // FIXME: https://github.com/gleam-lang/gleam/issues/2166
-  let field_id_size_bits = field_id_size_bits
-  // end FIXME
   let ids_num = list.length(ids)
   list.fold(
     ids,
@@ -123,9 +124,6 @@ fn field_ids_to_bitstring(ids: List(FieldId)) -> BitString {
 }
 
 fn indexes_to_bitstring(indexes: List(Index)) -> BitString {
-  // FIXME: https://github.com/gleam-lang/gleam/issues/2166
-  let field_id_size_bits = field_id_size_bits
-  // end FIXME
   let idx_num = list.length(indexes)
   list.fold(
     indexes,
@@ -227,7 +225,7 @@ fn fields_from_bitstring(
     Field(
       id: id,
       name: name,
-      data_type: field_type_from_bitstring(field_type),
+      field_type: field_type_from_bitstring(field_type),
       nilable: case field_nilable {
         1 -> True
         0 -> False
@@ -239,8 +237,8 @@ fn fields_from_bitstring(
   }
 }
 
-fn field_type_from_bitstring(data_type: BitString) -> DataType {
-  case data_type {
+fn field_type_from_bitstring(field_type: BitString) -> FieldType {
+  case field_type {
     <<0:8, 0:8>> -> Integer
     <<1:8, 0:8>> -> Float
     <<2:8, 0:8>> -> Decimal
@@ -249,5 +247,47 @@ fn field_type_from_bitstring(data_type: BitString) -> DataType {
     <<4:8, 0:8>> -> BitString(Unlimited)
     <<4:8, size:8>> -> BitString(Size(size))
     <<5:8, 0:8>> -> Timestamp
+  }
+}
+
+pub type Row =
+  List(#(String, DataType))
+
+pub fn match_fields(
+  table: Table,
+  fields: Row,
+) -> Result(List(DataSet), DataError) {
+  do_match_fields(table, fields, [])
+}
+
+fn do_match_fields(
+  table: Table,
+  fields: Row,
+  acc: List(DataSet),
+) -> Result(List(DataSet), DataError) {
+  case fields {
+    [] -> Ok(list.reverse(acc))
+    [#(name, data), ..rest] -> {
+      use field <- try(find_field(table, name))
+      let acc = list.filter(acc, fn(dataset) { dataset.field != field })
+      let acc = [DataSet(field: field, data: data), ..acc]
+      case field.field_type, data {
+        Integer, data_type.Integer(_) -> do_match_fields(table, rest, acc)
+        Float, data_type.Float(_) -> do_match_fields(table, rest, acc)
+        Decimal, data_type.Decimal(_, _) -> do_match_fields(table, rest, acc)
+        String(_), data_type.String(_) -> do_match_fields(table, rest, acc)
+        BitString(_), data_type.BitString(_) ->
+          do_match_fields(table, rest, acc)
+        Timestamp, data_type.Timestamp(_) -> do_match_fields(table, rest, acc)
+        field_type, _ -> Error(UnmatchFieldType(field_type, data))
+      }
+    }
+  }
+}
+
+pub fn find_field(table: Table, name: String) -> Result(Field, DataError) {
+  case list.find(table.fields, fn(field) { field.name == name }) {
+    Ok(f) -> Ok(f)
+    Error(Nil) -> Error(FieldNotFound(name))
   }
 }

@@ -1,3 +1,4 @@
+import gleam/bit_string
 import gleam/map.{Map}
 import gleam/option.{None, Some}
 import gleam/result.{try}
@@ -98,11 +99,12 @@ pub fn flush(kv: KV) -> Result(Nil, Nil) {
 }
 
 pub fn get(kv: KV, key: String) -> #(Result(BitString, Nil), KV) {
-  let key_hash = memtable.hash(key)
+  let key_bitstring = bit_string.from_string(key)
+  let key_hash = memtable.hash(key_bitstring)
   let #(range_id, kv) = find_range(kv, key_hash, kv.max_memtable_size)
   let assert Ok(range) = map.get(kv.memtable_ranges, range_id)
   let assert Some(memtable) = range.memtable
-  case memtable.get(memtable, key) {
+  case memtable.get(memtable, key_bitstring) {
     Ok(value) -> {
       let assert Ok(vfile) = index.get(kv.value_index, value.file_id)
       case value.read(vfile, value.offset) {
@@ -118,15 +120,16 @@ pub fn get(kv: KV, key: String) -> #(Result(BitString, Nil), KV) {
 }
 
 pub fn set(kv: KV, key: String, value: BitString) -> KV {
-  let key_hash = memtable.hash(key)
+  let key_bitstring = bit_string.from_string(key)
+  let key_hash = memtable.hash(key_bitstring)
   let #(range_id, kv) = find_range(kv, key_hash, kv.max_memtable_size)
   let assert Ok(range) = map.get(kv.memtable_ranges, range_id)
   let assert Some(memtable) = range.memtable
   let kv = KV(..kv, value_index: index.update_active(kv.value_index))
-  case memtable.get(memtable, key) {
+  case memtable.get(memtable, key_bitstring) {
     Ok(old_value) -> {
       // key is in the index, we have to replace it
-      case store_value(kv, key, range_id, range, memtable, value) {
+      case store_value(kv, key_bitstring, range_id, range, memtable, value) {
         Ok(kv) -> kv
         Error(CapacityExceeded) -> {
           let kv = split(kv, key_hash, range_id, range, memtable)
@@ -138,7 +141,7 @@ pub fn set(kv: KV, key: String, value: BitString) -> KV {
     }
     Error(Nil) -> {
       // key isn't in the index yet, insert it as a new key
-      case store_value(kv, key, range_id, range, memtable, value) {
+      case store_value(kv, key_bitstring, range_id, range, memtable, value) {
         Ok(kv) -> kv
         Error(CapacityExceeded) -> {
           let kv = split(kv, key_hash, range_id, range, memtable)
@@ -171,7 +174,7 @@ fn split(
 
 fn store_value(
   kv: KV,
-  key: String,
+  key: BitString,
   range_id: Int,
   range: MemTableRange,
   memtable: MemTable,

@@ -28,7 +28,7 @@ pub type MemTable {
 
 /// MemTableEntry is a single entry in the MemTable.
 pub type MemTableEntry {
-  MemTableEntry(key: String, value: Value)
+  MemTableEntry(key: BitString, value: Value)
 }
 
 /// Reason is the reason why a MemTable operation failed.
@@ -68,8 +68,8 @@ pub fn from_entries(entries: Map(Int, MemTableEntry), max_size: Int) -> MemTable
 /// entry_to_bitstring converts a MemTableEntry to a bitstring. It is mainly used
 /// when we need to convert the MemTableEntry to its binary representation.
 pub fn entry_to_bitstring(entry: MemTableEntry) -> BitString {
-  let key_hash = hash(entry.key)
-  let key_string = bit_string.from_string(entry.key)
+  let key_string = entry.key
+  let key_hash = hash(key_string)
   let key_size = bit_string.byte_size(key_string)
   let file_id = entry.value.file_id
   let file_offset = entry.value.offset
@@ -93,27 +93,26 @@ pub fn bitstring_to_entry(bitstring: BitString) -> #(Int, MemTableEntry) {
     file_offset:32,
     key_string:bit_string,
   >> = bitstring
-  let assert Ok(key) = bit_string.to_string(key_string)
   let value =
     Value(data: None, deleted: False, file_id: file_id, offset: file_offset)
-  #(key_hash, MemTableEntry(key: key, value: value))
+  #(key_hash, MemTableEntry(key: key_string, value: value))
 }
 
 /// contains checks if the MemTable contains the given key.
-pub fn contains(mem_table: MemTable, key: String) -> Bool {
+pub fn contains(mem_table: MemTable, key: BitString) -> Bool {
   map.has_key(mem_table.entries, hash(key))
 }
 
 /// generates a hash for the given key.
 @external(erlang, "erlang", "phash2")
-pub fn hash(key key: String) -> Int
+pub fn hash(key key: BitString) -> Int
 
 /// set sets the given key to the given value in the MemTable. If the MemTable
 /// reaches its capacity, it returns an error. Otherwise, it returns the updated
 /// MemTable.
 pub fn set(
   mem_table: MemTable,
-  key: String,
+  key: BitString,
   value: Value,
 ) -> Result(MemTable, Reason) {
   let key_hash = hash(key)
@@ -156,7 +155,7 @@ pub fn set(
 
 /// deletes the given key from the MemTable. If the key does not exist, it
 /// returns the original MemTable. Otherwise, it returns the updated MemTable.
-pub fn delete(mem_table: MemTable, key: String) -> MemTable {
+pub fn delete(mem_table: MemTable, key: BitString) -> MemTable {
   let key_hash = hash(key)
   case map.get(mem_table.entries, key_hash) {
     Error(Nil) -> mem_table
@@ -171,12 +170,16 @@ pub fn delete(mem_table: MemTable, key: String) -> MemTable {
 }
 
 /// gets the value of the given key from the MemTable. If the key does not
-/// exist, it returns an error.
-pub fn get(mem_table: MemTable, key: String) -> Result(Value, Nil) {
+/// exist, it returns an error. It generates the hash based on the string
+/// representation of the key and it generates a panic if the hash collides
+/// with a different key.
+pub fn get(mem_table: MemTable, key: BitString) -> Result(Value, Nil) {
   case map.get(mem_table.entries, hash(key)) {
     Ok(MemTableEntry(key: stored_key, value: value)) if key == stored_key ->
       Ok(value)
     Ok(MemTableEntry(key: stored_key, value: _)) -> {
+      let assert Ok(key) = bit_string.to_string(key)
+      let assert Ok(stored_key) = bit_string.to_string(stored_key)
       panic as "collision hash function between " <> key <> " and " <> stored_key
       Error(Nil)
     }

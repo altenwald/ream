@@ -33,13 +33,7 @@ pub fn load(path: String, max_value_size: Int) -> ValueIndex {
     fs.recursive_make_directory(fs.dirname(value_index_file))
   let assert Ok(value_index) = fs.open(value_index_file, [fs.Read, fs.Write])
   let #(active_value_file, values) =
-    read_value_files(
-      value_index,
-      fs.join([path, "value"]),
-      None,
-      max_value_size,
-      map.new(),
-    )
+    read_value_files(value_index, path, None, max_value_size, map.new())
   let assert Ok(_) = fs.close(value_index)
 
   ValueIndex(
@@ -124,10 +118,7 @@ pub fn update_active(value_index: ValueIndex) -> ValueIndex {
     Some(_file_id) -> value_index
     None -> {
       let assert Ok(vfile) =
-        value.create(
-          fs.join([value_index.base_path, "value"]),
-          value_index.max_value_size,
-        )
+        value.create(value_index.base_path, value_index.max_value_size)
       set(value_index, vfile)
     }
   }

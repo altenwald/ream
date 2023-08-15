@@ -79,11 +79,6 @@ pub fn add(
 }
 
 fn index_to_binary(index: Index) -> BitString {
-  // FIXME: https://github.com/gleam-lang/gleam/issues/2166
-  let offset_size_bits = offset_size_bits
-  let event_size_bits = event_size_bits
-  let file_id_size_bits = file_id_size_bits
-  // end FIXME
   <<
     index.offset:size(offset_size_bits),
     index.size:size(event_size_bits),

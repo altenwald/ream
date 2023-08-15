@@ -119,9 +119,6 @@ pub fn close(vfile: ValueFile) -> Result(Nil, file.Reason) {
 /// - n bytes: the value
 /// It returns the updated kv file with the new size.
 pub fn write_value(vfile: ValueFile, value: Value) -> Result(ValueFile, Reason) {
-  // FIXME: https://github.com/gleam-lang/gleam/issues/2166
-  let value_size_bits = value_size_bits
-  // end FIXME
   let value_size_bytes = value_size_bits / 8
   let assert Some(data) = value.data
   let data_size = bit_string.byte_size(data) + value_size_bytes + 1
