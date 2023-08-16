@@ -311,6 +311,18 @@ pub fn create_insert_close_open_find_and_close_test() {
       ],
     )
 
+  let assert Ok(accounts) =
+    schema.insert(
+      accounts,
+      [
+        #("id", data_type.Integer(2)),
+        #("name", data_type.String("Cash")),
+        #("debit", data_type.Decimal(5000, 2)),
+        #("balance", data_type.Decimal(5000, 2)),
+        #("inserted_at", data_type.Timestamp(1_690_785_424_366_000)),
+      ],
+    )
+
   let assert Ok(Nil) = schema.close(accounts)
 
   let assert True =
@@ -325,20 +337,45 @@ pub fn create_insert_close_open_find_and_close_test() {
       path,
     )
 
-  let #(Ok([result]), saved_accounts) =
+  let #(
+    Ok([
+      [
+        data_type.Integer(1),
+        data_type.String("Bank"),
+        data_type.Null,
+        data_type.Decimal(10_000, 2),
+        data_type.Decimal(10_000, 2),
+        data_type.Timestamp(1_690_785_424_366_972),
+      ],
+    ]),
+    saved_accounts,
+  ) =
     schema.find(
       saved_accounts,
       schema.Equal(schema.Field(1), schema.Literal(data_type.Integer(1))),
     )
 
-  let assert [
-    data_type.Integer(1),
-    data_type.String("Bank"),
-    data_type.Null,
-    data_type.Decimal(10_000, 2),
-    data_type.Decimal(10_000, 2),
-    data_type.Timestamp(1_690_785_424_366_972),
-  ] = result
+  let #(
+    Ok([
+      [
+        data_type.Integer(1),
+        data_type.String("Bank"),
+        data_type.Null,
+        data_type.Decimal(10_000, 2),
+        data_type.Decimal(10_000, 2),
+        data_type.Timestamp(1_690_785_424_366_972),
+      ],
+      [
+        data_type.Integer(2),
+        data_type.String("Cash"),
+        data_type.Null,
+        data_type.Decimal(5000, 2),
+        data_type.Decimal(5000, 2),
+        data_type.Timestamp(1_690_785_424_366_000),
+      ],
+    ]),
+    saved_accounts,
+  ) = schema.find(saved_accounts, schema.All)
 
   let assert Ok(Nil) = schema.close(saved_accounts)
 

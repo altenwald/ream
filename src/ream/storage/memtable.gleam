@@ -187,6 +187,15 @@ pub fn get(mem_table: MemTable, key: BitString) -> Result(Value, Nil) {
   }
 }
 
+pub fn get_all(mem_table: MemTable) -> List(#(Int, Value)) {
+  mem_table.entries
+  |> map.to_list()
+  |> list.map(fn(memtable_entry) {
+    let #(id, MemTableEntry(value: value, ..)) = memtable_entry
+    #(id, value)
+  })
+}
+
 /// search for a pivot in the MemTable. The pivot is the middle key in the
 /// MemTable.
 pub fn search_pivot(mem_table: MemTable) -> Int {

@@ -1,6 +1,11 @@
+//// Schema is helping you to create structured data to be stored in the disk.
+//// The schema is behaving as the most of the SQL-like databases around, it's
+//// letting us configure the tables, their primary keys, and unique and
+//// normal indexes.
+
 import gleam/list
 import gleam/map.{Map}
-import gleam/option.{Some}
+import gleam/option.{None, Some}
 import gleam/result.{try}
 import ream/storage/file as fs
 import ream/storage/memtable.{CapacityExceeded, MemTable}
@@ -300,7 +305,7 @@ pub fn find(
   operation: Operation,
 ) -> #(Result(List(List(DataType)), SchemaReason), Schema) {
   case operation, schema.table.primary_key {
-    // All, _ -> get_all(schema)
+    All, _ -> #(Ok(get_all(schema)), schema)
     Equal(Field(id1), Literal(key)), [id2] if id1 == id2 -> {
       case get(schema, key) {
         #(Ok(row), schema) -> #(Ok([row]), schema)
@@ -333,6 +338,42 @@ fn find_range(schema: Schema, key_hash: Int) -> #(Int, Schema) {
     range_id,
     Schema(..schema, memtable_ranges: ranges, memtables_loaded: loaded),
   )
+}
+
+fn get_all(schema: Schema) -> List(List(DataType)) {
+  list.map(
+    map.to_list(schema.memtable_ranges),
+    fn(range) {
+      let assert Ok(memtable) = case range {
+        #(memtable_id, MemTableRange(memtable: None, ..)) -> {
+          sstable.load(
+            sstable.path(schema.base_path, sstable.Key, memtable_id),
+            schema.max_memtable_size,
+          )
+        }
+        #(_memtable_id, MemTableRange(memtable: Some(memtable), ..)) -> {
+          Ok(memtable)
+        }
+      }
+      list.map(
+        memtable.get_all(memtable),
+        fn(entry) {
+          let assert Ok(entries) = case entry {
+            #(_id, Value(data: Some(data), ..)) ->
+              from_bitstring(schema.table.fields, data, [])
+            #(_id, Value(file_id: file_id, offset: offset, ..)) -> {
+              let assert Ok(vfile) = index.get(schema.value_index, file_id)
+              let assert Ok(Value(data: Some(data), ..)) =
+                value.read(vfile, offset)
+              from_bitstring(schema.table.fields, data, [])
+            }
+          }
+          entries
+        },
+      )
+    },
+  )
+  |> list.concat()
 }
 
 fn get(
