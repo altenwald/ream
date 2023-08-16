@@ -26,7 +26,7 @@ pub fn load(
   base_path: String,
   max_memtable_size: Int,
 ) -> #(Int, Map(Int, MemTableRange)) {
-  let key_index_file = fs.join([base_path, "index"])
+  let key_index_file = fs.join([base_path, "key", "index"])
   let assert Ok(kv) = fs.open(key_index_file, [fs.Read, fs.Write])
   let ranges = read_memtable_ranges(kv, base_path, max_memtable_size, map.new())
   let #(memtables_loaded, ranges) = case map.size(ranges) == 0 {
@@ -48,7 +48,8 @@ pub fn flush(
   sstable_kind: sstable.Kind,
   ranges: Map(Int, MemTableRange),
 ) -> Result(Bool, file.Reason) {
-  let assert Ok(kv_file) = fs.open(fs.join([base_path, "index"]), [fs.Write])
+  let assert Ok(kv_file) =
+    fs.open(fs.join([base_path, "key", "index"]), [fs.Write])
   let memtable_ranges = map.to_list(ranges)
   case
     write_memtable_ranges(kv_file, sstable_kind, base_path, memtable_ranges)

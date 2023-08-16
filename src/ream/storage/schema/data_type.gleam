@@ -6,6 +6,7 @@ import gleam/result
 import gleam/string
 
 pub type DataType {
+  Null
   Integer(Int)
   Float(Float)
   Decimal(Int, Int)
@@ -50,18 +51,19 @@ pub fn to_bitstring(data: DataType) -> BitString {
     }
     BitString(b) -> {
       let byte_size = bit_string.byte_size(b)
-      <<4:8, byte_size:16, b:bit_string>>
+      <<4:8, byte_size:32, b:bit_string>>
     }
     Timestamp(timestamp) -> {
       let byte_size = int_byte_size(timestamp)
       let bit_size = byte_size * 8
       <<5:8, byte_size:16, timestamp:size(bit_size)>>
     }
+    Null -> <<6:8>>
   }
 }
 
-pub fn from_bitstring(str: BitString) -> #(DataType, BitString) {
-  case str {
+pub fn from_bitstring(data: BitString) -> #(DataType, BitString) {
+  case data {
     <<0:8, byte_size:16, rest:bit_string>> -> {
       let bit_size = byte_size * 8
       let <<int:size(bit_size), rest:bit_string>> = rest
@@ -77,12 +79,14 @@ pub fn from_bitstring(str: BitString) -> #(DataType, BitString) {
       #(Decimal(d1, d2), rest)
     }
     <<3:8, byte_size:32, rest:bit_string>> -> {
-      let assert <<str:size(byte_size)-bit_string, rest:bit_string>> = rest
+      let bit_size = byte_size * 8
+      let assert <<str:size(bit_size)-bit_string, rest:bit_string>> = rest
       let assert Ok(str) = bit_string.to_string(str)
       #(String(str), rest)
     }
-    <<4:8, byte_size:16, rest:bit_string>> -> {
-      let <<b:size(byte_size)-bit_string, rest:bit_string>> = rest
+    <<4:8, byte_size:32, rest:bit_string>> -> {
+      let bit_size = byte_size * 8
+      let assert <<b:size(bit_size)-bit_string, rest:bit_string>> = rest
       #(BitString(b), rest)
     }
     <<5:8, byte_size:16, rest:bit_string>> -> {
@@ -90,11 +94,13 @@ pub fn from_bitstring(str: BitString) -> #(DataType, BitString) {
       let assert <<ts:size(bit_size), rest:bit_string>> = rest
       #(Timestamp(ts), rest)
     }
+    <<6:8, rest:bit_string>> -> #(Null, rest)
   }
 }
 
 pub fn to_string(data: DataType) -> String {
   case data {
+    Null -> ""
     Integer(i) -> int.to_string(i)
     Float(f) -> float.to_string(f)
     BitString(b) -> {

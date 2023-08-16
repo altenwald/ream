@@ -48,8 +48,7 @@ pub fn open(
 
   let key_dir = fs.join([path, "key"])
   let assert Ok(True) = fs.recursive_make_directory(key_dir)
-  let assert #(memtables_loaded, ranges) =
-    range.load(key_dir, max_memtable_size)
+  let assert #(memtables_loaded, ranges) = range.load(path, max_memtable_size)
 
   let value_dir = fs.join([path, "value"])
   let value_index = index.load(value_dir, max_value_size)

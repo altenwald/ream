@@ -1,7 +1,6 @@
 import gleam/erlang/file
 import gleam/bit_string
 import gleam/list
-import gleam/result.{try}
 import gleam/string
 import ream/storage/file as fs
 import ream/storage/schema/data_type.{DataType}
@@ -27,6 +26,7 @@ pub type DataSet {
 pub type DataError {
   FieldNotFound(String)
   UnmatchFieldType(FieldType, DataType)
+  FieldCannotBeNull(Field)
 }
 
 pub type FieldId =
@@ -49,6 +49,9 @@ pub type Table {
     indexes: List(Index),
   )
 }
+
+pub type Row =
+  List(#(String, DataType))
 
 pub const name_size_bits = 8
 
@@ -250,36 +253,40 @@ fn field_type_from_bitstring(field_type: BitString) -> FieldType {
   }
 }
 
-pub type Row =
-  List(#(String, DataType))
-
-pub fn match_fields(
-  table: Table,
-  fields: Row,
-) -> Result(List(DataSet), DataError) {
-  do_match_fields(table, fields, [])
+pub fn match_fields(table: Table, rows: Row) -> Result(List(DataSet), DataError) {
+  do_match_fields(table.fields, rows, [])
 }
 
 fn do_match_fields(
-  table: Table,
-  fields: Row,
+  fields: List(Field),
+  rows: Row,
   acc: List(DataSet),
 ) -> Result(List(DataSet), DataError) {
   case fields {
     [] -> Ok(list.reverse(acc))
-    [#(name, data), ..rest] -> {
-      use field <- try(find_field(table, name))
-      let acc = list.filter(acc, fn(dataset) { dataset.field != field })
-      let acc = [DataSet(field: field, data: data), ..acc]
-      case field.field_type, data {
-        Integer, data_type.Integer(_) -> do_match_fields(table, rest, acc)
-        Float, data_type.Float(_) -> do_match_fields(table, rest, acc)
-        Decimal, data_type.Decimal(_, _) -> do_match_fields(table, rest, acc)
-        String(_), data_type.String(_) -> do_match_fields(table, rest, acc)
-        BitString(_), data_type.BitString(_) ->
-          do_match_fields(table, rest, acc)
-        Timestamp, data_type.Timestamp(_) -> do_match_fields(table, rest, acc)
-        field_type, _ -> Error(UnmatchFieldType(field_type, data))
+    [field, ..rest_fields] -> {
+      let #(row, rest_rows) = case list.key_pop(rows, field.name) {
+        Ok(#(row, rest_rows)) -> #(row, rest_rows)
+        Error(Nil) -> #(data_type.Null, rows)
+      }
+
+      let acc = [DataSet(field: field, data: row), ..acc]
+      case field.field_type, field.nilable, row {
+        Integer, _, data_type.Integer(_) ->
+          do_match_fields(rest_fields, rest_rows, acc)
+        Float, _, data_type.Float(_) ->
+          do_match_fields(rest_fields, rest_rows, acc)
+        Decimal, _, data_type.Decimal(_, _) ->
+          do_match_fields(rest_fields, rest_rows, acc)
+        String(_), _, data_type.String(_) ->
+          do_match_fields(rest_fields, rest_rows, acc)
+        BitString(_), _, data_type.BitString(_) ->
+          do_match_fields(rest_fields, rest_rows, acc)
+        Timestamp, _, data_type.Timestamp(_) ->
+          do_match_fields(rest_fields, rest_rows, acc)
+        _, True, data_type.Null -> do_match_fields(rest_fields, rest_rows, acc)
+        _, False, data_type.Null -> Error(FieldCannotBeNull(field))
+        field_type, _, _ -> Error(UnmatchFieldType(field_type, row))
       }
     }
   }

@@ -51,15 +51,46 @@ pub fn create(
   let path = fs.join([path, "schema", table.name])
   let assert Ok(True) = fs.recursive_make_directory(path)
 
-  // load the structure of the table
+  // save the structure of the table
   let meta_file_path = fs.join([path, "meta"])
   let assert Ok(Nil) = table.flush(table, meta_file_path)
 
   // load memtables where the primary keys are stored
   let key_dir = fs.join([path, "key"])
   let assert Ok(True) = fs.recursive_make_directory(key_dir)
-  let assert #(memtables_loaded, ranges) =
-    range.load(key_dir, max_memtable_size)
+  let assert #(memtables_loaded, ranges) = range.load(path, max_memtable_size)
+
+  // open the files where the values (rows) are stored
+  let value_dir = fs.join([path, "value"])
+  let value_index = index.load(value_dir, max_value_size)
+
+  Schema(
+    path,
+    table,
+    ranges,
+    value_index,
+    memtables_loaded,
+    max_memtables_loaded,
+    max_memtable_size,
+    max_value_size,
+  )
+}
+
+pub fn open(
+  table_name: String,
+  max_memtable_size: Int,
+  max_memtables_loaded: Int,
+  max_value_size: Int,
+  path: String,
+) -> Schema {
+  let path = fs.join([path, "schema", table_name])
+
+  // load the structure of the table
+  let meta_file_path = fs.join([path, "meta"])
+  let assert Ok(table) = table.load(meta_file_path)
+
+  // load memtables where the primary keys are stored
+  let assert #(memtables_loaded, ranges) = range.load(path, max_memtable_size)
 
   // open the files where the values (rows) are stored
   let value_dir = fs.join([path, "value"])
@@ -85,7 +116,8 @@ pub fn close(schema: Schema) -> Result(Nil, Nil) {
 pub fn flush(schema: Schema) -> Result(Nil, Nil) {
   let key_dir = fs.join([schema.base_path, "key"])
   let assert Ok(True) = fs.recursive_make_directory(key_dir)
-  let assert Ok(_) = range.flush(key_dir, sstable.Key, schema.memtable_ranges)
+  let assert Ok(_) =
+    range.flush(schema.base_path, sstable.Key, schema.memtable_ranges)
 
   let value_index_dir = fs.join([schema.base_path, "value"])
   let assert Ok(True) = fs.recursive_make_directory(value_index_dir)
@@ -99,7 +131,7 @@ pub fn insert(
   data: table.Row,
 ) -> Result(Schema, table.DataError) {
   use row <- try(table.match_fields(schema.table, data))
-  // TODO: canonical form when we have default values for `table.Field`
+  // TODO: it should fail if the value for a PK isn't defined
   let primary_key_ids = schema.table.primary_key
   let primary_key =
     list.filter_map(
@@ -245,12 +277,22 @@ fn split(
 pub fn find(
   schema: Schema,
   operation: Operation,
-) -> #(Result(List(BitString), Nil), Schema) {
+) -> #(Result(List(List(DataType)), SchemaReason), Schema) {
   case operation, schema.table.primary_key {
     // All, _ -> get_all(schema)
-    Equal(Field(id1), Literal(key)), [id2] if id1 == id2 -> get(schema, key)
-    Equal(Literal(key), Field(id1)), [id2] if id1 == id2 -> get(schema, key)
-    _, _ -> todo as "still not implemented"
+    Equal(Field(id1), Literal(key)), [id2] if id1 == id2 -> {
+      case get(schema, key) {
+        #(Ok(row), schema) -> #(Ok([row]), schema)
+        #(Error(reason), schema) -> #(Error(reason), schema)
+      }
+    }
+    Equal(Literal(key), Field(id1)), [id2] if id1 == id2 -> {
+      case get(schema, key) {
+        #(Ok(row), schema) -> #(Ok([row]), schema)
+        #(Error(reason), schema) -> #(Error(reason), schema)
+      }
+    }
+    _, _ -> #(Error(NotImplemented(operation)), schema)
   }
 }
 
@@ -272,7 +314,10 @@ fn find_range(schema: Schema, key_hash: Int) -> #(Int, Schema) {
   )
 }
 
-fn get(schema: Schema, key: DataType) -> #(Result(List(BitString), Nil), Schema) {
+fn get(
+  schema: Schema,
+  key: DataType,
+) -> #(Result(List(DataType), SchemaReason), Schema) {
   let key_bitstring = data_type.to_bitstring(key)
   let key_hash = memtable.hash(key_bitstring)
   let #(range_id, schema) = find_range(schema, key_hash)
@@ -283,12 +328,60 @@ fn get(schema: Schema, key: DataType) -> #(Result(List(BitString), Nil), Schema)
       let assert Ok(vfile) = index.get(schema.value_index, value.file_id)
       case value.read(vfile, value.offset) {
         Ok(Value(deleted: False, file_id: _, offset: _, data: Some(data))) -> #(
-          Ok([data]),
+          from_bitstring(schema.table.fields, data, []),
           schema,
         )
-        _ -> #(Error(Nil), schema)
+        _ -> #(Error(NotFound), schema)
       }
     }
-    Error(_err) -> #(Error(Nil), schema)
+    Error(_err) -> #(Error(NotFound), schema)
+  }
+}
+
+pub type SchemaReason {
+  NotFound
+  NotImplemented(Operation)
+  UnexpectedData(BitString)
+  MissingFields(List(table.Field))
+  UnmatchField(table.Field, DataType)
+}
+
+fn from_bitstring(fields, data, acc) -> Result(List(DataType), SchemaReason) {
+  case fields, data {
+    [], <<>> -> Ok(list.reverse(acc))
+    [], _ -> Error(UnexpectedData(data))
+    _, <<>> -> Error(MissingFields(fields))
+    [field, ..rest_fields], _ -> {
+      case data_type.from_bitstring(data), field.field_type, field.nilable {
+        #(data_type.Integer(i), rest_data), table.Integer, _ ->
+          from_bitstring(rest_fields, rest_data, [data_type.Integer(i), ..acc])
+        #(data_type.Float(f), rest_data), table.Float, _ ->
+          from_bitstring(rest_fields, rest_data, [data_type.Float(f), ..acc])
+        #(data_type.Decimal(d, b), rest_data), table.Decimal, _ ->
+          from_bitstring(
+            rest_fields,
+            rest_data,
+            [data_type.Decimal(d, b), ..acc],
+          )
+        #(data_type.String(s), rest_data), table.String(_), _ ->
+          from_bitstring(rest_fields, rest_data, [data_type.String(s), ..acc])
+        #(data_type.BitString(b), rest_data), table.BitString(_), _ ->
+          from_bitstring(
+            rest_fields,
+            rest_data,
+            [data_type.BitString(b), ..acc],
+          )
+        #(data_type.Timestamp(t), rest_data), table.Timestamp, _ ->
+          from_bitstring(
+            rest_fields,
+            rest_data,
+            [data_type.Timestamp(t), ..acc],
+          )
+        #(data_type.Null, rest_data), _, True ->
+          from_bitstring(rest_fields, rest_data, [data_type.Null, ..acc])
+        #(cell, _rest), _field_type, _field_nilable ->
+          Error(UnmatchField(field, cell))
+      }
+    }
   }
 }
