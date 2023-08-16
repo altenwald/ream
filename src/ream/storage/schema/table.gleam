@@ -27,6 +27,8 @@ pub type DataError {
   FieldNotFound(String)
   UnmatchFieldType(FieldType, DataType)
   FieldCannotBeNull(Field)
+  PrimaryKeyCannotBeNull(Field)
+  PrimaryKeyRefInvalid(FieldId)
 }
 
 pub type FieldId =
