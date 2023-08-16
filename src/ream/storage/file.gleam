@@ -95,10 +95,10 @@ fn init(filename: String, mode: List(Mode)) -> actor.InitResult(State, Message) 
 }
 
 @external(erlang, "file", "open")
-fn file_open(filename filename: String, mode mode: List(Mode)) -> Result(
-  Pid,
-  file.Reason,
-)
+fn file_open(
+  filename filename: String,
+  mode mode: List(Mode),
+) -> Result(Pid, file.Reason)
 
 pub fn handle_message(message: Message, state: State) -> actor.Next(State) {
   case message {
@@ -217,10 +217,10 @@ pub fn join(parts parts: List(String)) -> String
 
 /// The position function is returning the current position in the file.
 @external(erlang, "file", "position")
-fn position(io_device io_device: Pid, location location: Location) -> Result(
-  Int,
-  file.Reason,
-)
+fn position(
+  io_device io_device: Pid,
+  location location: Location,
+) -> Result(Int, file.Reason)
 
 /// The recursive make directory function let us to create a directory and
 /// all the parent directories if they don't exist.
