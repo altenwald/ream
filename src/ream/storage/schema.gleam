@@ -3,10 +3,13 @@
 //// letting us configure the tables, their primary keys, and unique and
 //// normal indexes.
 
+import gleam/bit_string
 import gleam/list
 import gleam/map.{Map}
 import gleam/option.{None, Some}
+import gleam/order
 import gleam/result.{try}
+import gleam/string
 import ream/storage/file as fs
 import ream/storage/memtable.{CapacityExceeded, MemTable}
 import ream/storage/memtable/range.{MemTableRange}
@@ -22,6 +25,7 @@ pub type DataOperation {
 }
 
 pub type Operation {
+  Contains(DataOperation, DataOperation)
   Equal(DataOperation, DataOperation)
   LesserThan(DataOperation, DataOperation)
   GreaterThan(DataOperation, DataOperation)
@@ -300,12 +304,15 @@ fn split(
   Schema(..schema, memtable_ranges: ranges)
 }
 
+// TODO this should retrieve a cursor, a list of values and offsets
+//      to be retrieved from the value files, or place the result
+//      inside a temporal storage for retrieving that in a secure
+//      way without blocking.
 pub fn find(
   schema: Schema,
   operation: Operation,
 ) -> #(Result(List(List(DataType)), SchemaReason), Schema) {
   case operation, schema.table.primary_key {
-    All, _ -> #(Ok(get_all(schema)), schema)
     Equal(Field(id1), Literal(key)), [id2] if id1 == id2 -> {
       case get(schema, key) {
         #(Ok(row), schema) -> #(Ok([row]), schema)
@@ -318,7 +325,96 @@ pub fn find(
         #(Error(reason), schema) -> #(Error(reason), schema)
       }
     }
-    _, _ -> #(Error(NotImplemented(operation)), schema)
+    _, _ -> {
+      let filter = to_filter(schema, operation)
+      #(Ok(get_all(schema, filter)), schema)
+    }
+  }
+}
+
+pub type OperationFn =
+  fn(table.Row) -> Bool
+
+pub type DataOperationFn =
+  fn(table.Row) -> DataType
+
+fn to_filter_data(
+  table: Table,
+  data_operation: DataOperation,
+) -> DataOperationFn {
+  case data_operation {
+    Field(field_id) -> fn(dataset: table.Row) {
+      let assert Ok(field) = table.find_field(table, field_id)
+      let assert Ok(data) = list.key_find(dataset, field.name)
+      data
+    }
+    Literal(data) -> fn(_) { data }
+  }
+}
+
+fn to_filter(schema: Schema, operation: Operation) -> OperationFn {
+  case operation {
+    All -> fn(_) { True }
+    And(a, b) -> fn(row) {
+      let left = to_filter(schema, a)
+      let right = to_filter(schema, b)
+      left(row) && right(row)
+    }
+    Equal(a, b) -> fn(row) {
+      let left = to_filter_data(schema.table, a)
+      let right = to_filter_data(schema.table, b)
+      data_type.compare(left(row), right(row)) == order.Eq
+    }
+    GreaterOrEqualThan(a, b) -> fn(row) {
+      let left = to_filter_data(schema.table, a)
+      let right = to_filter_data(schema.table, b)
+      data_type.compare(left(row), right(row)) != order.Lt
+    }
+    GreaterThan(a, b) -> fn(row) {
+      let left = to_filter_data(schema.table, a)
+      let right = to_filter_data(schema.table, b)
+      data_type.compare(left(row), right(row)) == order.Gt
+    }
+    LesserOrEqualThan(a, b) -> fn(row) {
+      let left = to_filter_data(schema.table, a)
+      let right = to_filter_data(schema.table, b)
+      data_type.compare(left(row), right(row)) != order.Gt
+    }
+    LesserThan(a, b) -> fn(row) {
+      let left = to_filter_data(schema.table, a)
+      let right = to_filter_data(schema.table, b)
+      data_type.compare(left(row), right(row)) == order.Lt
+    }
+    Contains(a, b) -> fn(row) {
+      let left = to_filter_data(schema.table, a)
+      let right = to_filter_data(schema.table, b)
+      contains(left(row), right(row))
+    }
+    Not(a) -> fn(row) {
+      let unary = to_filter(schema, a)
+      !unary(row)
+    }
+    Or(a, b) -> fn(row) {
+      let left = to_filter(schema, a)
+      let right = to_filter(schema, b)
+      left(row) || right(row)
+    }
+  }
+}
+
+fn contains(left: DataType, right: DataType) -> Bool {
+  case left, right {
+    data_type.String(l), data_type.String(r) -> string.contains(l, r)
+    data_type.BitString(l), _ -> {
+      let assert Ok(l) = bit_string.to_string(l)
+      contains(data_type.String(l), right)
+    }
+    _, data_type.BitString(r) -> {
+      let assert Ok(r) = bit_string.to_string(r)
+      contains(left, data_type.String(r))
+    }
+    // TODO should we trigger an error here instead?
+    _, _ -> False
   }
 }
 
@@ -340,7 +436,7 @@ fn find_range(schema: Schema, key_hash: Int) -> #(Int, Schema) {
   )
 }
 
-fn get_all(schema: Schema) -> List(List(DataType)) {
+fn get_all(schema: Schema, filter: OperationFn) -> List(List(DataType)) {
   list.map(
     map.to_list(schema.memtable_ranges),
     fn(range) {
@@ -355,7 +451,7 @@ fn get_all(schema: Schema) -> List(List(DataType)) {
           Ok(memtable)
         }
       }
-      list.map(
+      list.filter_map(
         memtable.get_all(memtable),
         fn(entry) {
           let assert Ok(entries) = case entry {
@@ -368,7 +464,10 @@ fn get_all(schema: Schema) -> List(List(DataType)) {
               from_bitstring(schema.table.fields, data, [])
             }
           }
-          entries
+          case filter(entries) {
+            True -> Ok(list.map(entries, fn(entry) { entry.1 }))
+            False -> Error(Nil)
+          }
         },
       )
     },
@@ -389,10 +488,10 @@ fn get(
     Ok(value) -> {
       let assert Ok(vfile) = index.get(schema.value_index, value.file_id)
       case value.read(vfile, value.offset) {
-        Ok(Value(deleted: False, file_id: _, offset: _, data: Some(data))) -> #(
-          from_bitstring(schema.table.fields, data, []),
-          schema,
-        )
+        Ok(Value(deleted: False, file_id: _, offset: _, data: Some(data))) -> {
+          let assert Ok(entries) = from_bitstring(schema.table.fields, data, [])
+          #(Ok(list.map(entries, fn(entry) { entry.1 })), schema)
+        }
         _ -> #(Error(NotFound), schema)
       }
     }
@@ -408,7 +507,11 @@ pub type SchemaReason {
   UnmatchField(table.Field, DataType)
 }
 
-fn from_bitstring(fields, data, acc) -> Result(List(DataType), SchemaReason) {
+fn from_bitstring(
+  fields: List(table.Field),
+  data: BitString,
+  acc: table.Row,
+) -> Result(table.Row, SchemaReason) {
   case fields, data {
     [], <<>> -> Ok(list.reverse(acc))
     [], _ -> Error(UnexpectedData(data))
@@ -416,31 +519,47 @@ fn from_bitstring(fields, data, acc) -> Result(List(DataType), SchemaReason) {
     [field, ..rest_fields], _ -> {
       case data_type.from_bitstring(data), field.field_type, field.nilable {
         #(data_type.Integer(i), rest_data), table.Integer, _ ->
-          from_bitstring(rest_fields, rest_data, [data_type.Integer(i), ..acc])
+          from_bitstring(
+            rest_fields,
+            rest_data,
+            [#(field.name, data_type.Integer(i)), ..acc],
+          )
         #(data_type.Float(f), rest_data), table.Float, _ ->
-          from_bitstring(rest_fields, rest_data, [data_type.Float(f), ..acc])
+          from_bitstring(
+            rest_fields,
+            rest_data,
+            [#(field.name, data_type.Float(f)), ..acc],
+          )
         #(data_type.Decimal(d, b), rest_data), table.Decimal, _ ->
           from_bitstring(
             rest_fields,
             rest_data,
-            [data_type.Decimal(d, b), ..acc],
+            [#(field.name, data_type.Decimal(d, b)), ..acc],
           )
         #(data_type.String(s), rest_data), table.String(_), _ ->
-          from_bitstring(rest_fields, rest_data, [data_type.String(s), ..acc])
+          from_bitstring(
+            rest_fields,
+            rest_data,
+            [#(field.name, data_type.String(s)), ..acc],
+          )
         #(data_type.BitString(b), rest_data), table.BitString(_), _ ->
           from_bitstring(
             rest_fields,
             rest_data,
-            [data_type.BitString(b), ..acc],
+            [#(field.name, data_type.BitString(b)), ..acc],
           )
         #(data_type.Timestamp(t), rest_data), table.Timestamp, _ ->
           from_bitstring(
             rest_fields,
             rest_data,
-            [data_type.Timestamp(t), ..acc],
+            [#(field.name, data_type.Timestamp(t)), ..acc],
           )
         #(data_type.Null, rest_data), _, True ->
-          from_bitstring(rest_fields, rest_data, [data_type.Null, ..acc])
+          from_bitstring(
+            rest_fields,
+            rest_data,
+            [#(field.name, data_type.Null), ..acc],
+          )
         #(cell, _rest), _field_type, _field_nilable ->
           Error(UnmatchField(field, cell))
       }

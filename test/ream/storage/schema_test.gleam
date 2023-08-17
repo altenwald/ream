@@ -1,6 +1,7 @@
 import gleam/erlang/file
+import gleam/list
 import ream/storage/schema
-import ream/storage/schema/data_type
+import ream/storage/schema/data_type as dt
 import ream/storage/schema/table.{Field, Table}
 import ream/storage/file as fs
 
@@ -120,6 +121,115 @@ pub fn wrong_ref_create_test() {
     )
 }
 
+pub fn find_test() {
+  let path = fs.join([base_path, "find_test"])
+  let _ = file.recursive_delete(path)
+
+  let table =
+    Table(
+      name: "user",
+      fields: [
+        Field(1, "id", table.Integer, False),
+        Field(2, "name", table.String(table.Unlimited), False),
+        Field(3, "age", table.Integer, False),
+      ],
+      primary_key: [1],
+      indexes: [],
+    )
+
+  let assert Ok(users) =
+    schema.create(
+      table,
+      max_memtable_size,
+      max_memtables_loaded,
+      max_value_size,
+      path,
+    )
+
+  let data = [
+    [
+      #("id", dt.Integer(1)),
+      #("name", dt.String("manuel")),
+      #("age", dt.Integer(43)),
+    ],
+    [
+      #("id", dt.Integer(2)),
+      #("name", dt.String("antonio")),
+      #("age", dt.Integer(33)),
+    ],
+    [
+      #("id", dt.Integer(3)),
+      #("name", dt.String("ana")),
+      #("age", dt.Integer(27)),
+    ],
+    [
+      #("id", dt.Integer(4)),
+      #("name", dt.String("matusalen")),
+      #("age", dt.Integer(90)),
+    ],
+    [
+      #("id", dt.Integer(5)),
+      #("name", dt.String("jesus")),
+      #("age", dt.Integer(3)),
+    ],
+  ]
+  let users =
+    list.fold(
+      data,
+      users,
+      fn(users, user) {
+        let assert Ok(users) = schema.insert(users, user)
+        users
+      },
+    )
+
+  let assert #(
+    Ok([
+      [dt.Integer(1), dt.String("manuel"), dt.Integer(43)],
+      [dt.Integer(2), dt.String("antonio"), dt.Integer(33)],
+      [dt.Integer(3), dt.String("ana"), dt.Integer(27)],
+      [dt.Integer(4), dt.String("matusalen"), dt.Integer(90)],
+    ]),
+    users,
+  ) =
+    schema.find(
+      users,
+      schema.GreaterOrEqualThan(schema.Field(3), schema.Literal(dt.Integer(18))),
+    )
+
+  let assert #(Ok([[dt.Integer(5), dt.String("jesus"), dt.Integer(3)]]), users) =
+    schema.find(
+      users,
+      schema.LesserThan(schema.Field(3), schema.Literal(dt.Integer(18))),
+    )
+
+  let assert #(
+    Ok([[dt.Integer(1), dt.String("manuel"), dt.Integer(43)]]),
+    users,
+  ) =
+    schema.find(
+      users,
+      schema.Equal(schema.Field(2), schema.Literal(dt.String("manuel"))),
+    )
+
+  let assert #(
+    Ok([[dt.Integer(1), dt.String("manuel"), dt.Integer(43)]]),
+    users,
+  ) =
+    schema.find(
+      users,
+      schema.Contains(schema.Field(2), schema.Literal(dt.String("man"))),
+    )
+
+  let assert #(Ok([]), users) =
+    schema.find(
+      users,
+      schema.Equal(schema.Field(2), schema.Literal(dt.String("manu"))),
+    )
+
+  let assert Ok(Nil) = schema.close(users)
+}
+
 pub fn insert_test() {
   let path = fs.join([base_path, "insert_test"])
   let _ = file.recursive_delete(path)
@@ -152,11 +262,11 @@ pub fn insert_test() {
     schema.insert(
       accounts,
       [
-        #("id", data_type.Integer(1)),
-        #("name", data_type.String("Bank")),
-        #("debit", data_type.Decimal(10_000, 2)),
-        #("balance", data_type.Decimal(10_000, 2)),
-        #("inserted_at", data_type.Timestamp(1_690_785_424_366_972)),
+        #("id", dt.Integer(1)),
+        #("name", dt.String("Bank")),
+        #("debit", dt.Decimal(10_000, 2)),
+        #("balance", dt.Decimal(10_000, 2)),
+        #("inserted_at", dt.Timestamp(1_690_785_424_366_972)),
       ],
     )
 
@@ -164,29 +274,29 @@ pub fn insert_test() {
     schema.insert(
       accounts,
       [
-        #("id", data_type.Integer(1)),
-        #("name", data_type.String("Active")),
-        #("balance", data_type.Decimal(100, 0)),
-        #("inserted_at", data_type.Timestamp(1_690_785_424_366_000)),
+        #("id", dt.Integer(1)),
+        #("name", dt.String("Active")),
+        #("balance", dt.Decimal(100, 0)),
+        #("inserted_at", dt.Timestamp(1_690_785_424_366_000)),
       ],
     )
 
   let assert #(
     Ok([
       [
-        data_type.Integer(1),
-        data_type.String("Active"),
-        data_type.Null,
-        data_type.Null,
-        data_type.Decimal(100, 0),
-        data_type.Timestamp(1_690_785_424_366_000),
+        dt.Integer(1),
+        dt.String("Active"),
+        dt.Null,
+        dt.Null,
+        dt.Decimal(100, 0),
+        dt.Timestamp(1_690_785_424_366_000),
       ],
     ]),
     accounts,
   ) =
     schema.find(
       accounts,
-      schema.Equal(schema.Field(1), schema.Literal(data_type.Integer(1))),
+      schema.Equal(schema.Field(1), schema.Literal(dt.Integer(1))),
     )
 
   let assert Ok(Nil) = schema.close(accounts)
@@ -228,9 +338,9 @@ pub fn invalid_primary_key_test() {
     schema.insert(
       accounts,
       [
-        #("name", data_type.String("1984")),
-        #("value", data_type.Decimal(1000, 2)),
-        #("inserted_at", data_type.Timestamp(1_690_785_424_366_972)),
+        #("name", dt.String("1984")),
+        #("value", dt.Decimal(1000, 2)),
+        #("inserted_at", dt.Timestamp(1_690_785_424_366_972)),
       ],
     )
 
@@ -243,11 +353,11 @@ pub fn invalid_primary_key_test() {
     schema.insert(
       accounts,
       [
-        #("type", data_type.String("Books")),
-        #("class", data_type.Null),
-        #("name", data_type.String("1984")),
-        #("value", data_type.Decimal(1000, 2)),
-        #("inserted_at", data_type.Timestamp(1_690_785_424_366_972)),
+        #("type", dt.String("Books")),
+        #("class", dt.Null),
+        #("name", dt.String("1984")),
+        #("value", dt.Decimal(1000, 2)),
+        #("inserted_at", dt.Timestamp(1_690_785_424_366_972)),
       ],
     )
 
@@ -260,11 +370,11 @@ pub fn invalid_primary_key_test() {
     schema.insert(
       accounts,
       [
-        #("type", data_type.Null),
-        #("class", data_type.String("Fantasy")),
-        #("name", data_type.String("1984")),
-        #("value", data_type.Decimal(1000, 2)),
-        #("inserted_at", data_type.Timestamp(1_690_785_424_366_972)),
+        #("type", dt.Null),
+        #("class", dt.String("Fantasy")),
+        #("name", dt.String("1984")),
+        #("value", dt.Decimal(1000, 2)),
+        #("inserted_at", dt.Timestamp(1_690_785_424_366_972)),
       ],
     )
 
@@ -303,11 +413,11 @@ pub fn create_insert_close_open_find_and_close_test() {
     schema.insert(
       accounts,
       [
-        #("id", data_type.Integer(1)),
-        #("name", data_type.String("Bank")),
-        #("debit", data_type.Decimal(10_000, 2)),
-        #("balance", data_type.Decimal(10_000, 2)),
-        #("inserted_at", data_type.Timestamp(1_690_785_424_366_972)),
+        #("id", dt.Integer(1)),
+        #("name", dt.String("Bank")),
+        #("debit", dt.Decimal(10_000, 2)),
+        #("balance", dt.Decimal(10_000, 2)),
+        #("inserted_at", dt.Timestamp(1_690_785_424_366_972)),
       ],
     )
 
@@ -315,11 +425,11 @@ pub fn create_insert_close_open_find_and_close_test() {
     schema.insert(
       accounts,
       [
-        #("id", data_type.Integer(2)),
-        #("name", data_type.String("Cash")),
-        #("debit", data_type.Decimal(5000, 2)),
-        #("balance", data_type.Decimal(5000, 2)),
-        #("inserted_at", data_type.Timestamp(1_690_785_424_366_000)),
+        #("id", dt.Integer(2)),
+        #("name", dt.String("Cash")),
+        #("debit", dt.Decimal(5000, 2)),
+        #("balance", dt.Decimal(5000, 2)),
+        #("inserted_at", dt.Timestamp(1_690_785_424_366_000)),
       ],
     )
 
@@ -340,38 +450,38 @@ pub fn create_insert_close_open_find_and_close_test() {
   let #(
     Ok([
       [
-        data_type.Integer(1),
-        data_type.String("Bank"),
-        data_type.Null,
-        data_type.Decimal(10_000, 2),
-        data_type.Decimal(10_000, 2),
-        data_type.Timestamp(1_690_785_424_366_972),
+        dt.Integer(1),
+        dt.String("Bank"),
+        dt.Null,
+        dt.Decimal(10_000, 2),
+        dt.Decimal(10_000, 2),
+        dt.Timestamp(1_690_785_424_366_972),
       ],
     ]),
     saved_accounts,
   ) =
     schema.find(
       saved_accounts,
-      schema.Equal(schema.Field(1), schema.Literal(data_type.Integer(1))),
+      schema.Equal(schema.Field(1), schema.Literal(dt.Integer(1))),
     )
 
   let #(
     Ok([
       [
-        data_type.Integer(1),
-        data_type.String("Bank"),
-        data_type.Null,
-        data_type.Decimal(10_000, 2),
-        data_type.Decimal(10_000, 2),
-        data_type.Timestamp(1_690_785_424_366_972),
+        dt.Integer(1),
+        dt.String("Bank"),
+        dt.Null,
+        dt.Decimal(10_000, 2),
+        dt.Decimal(10_000, 2),
+        dt.Timestamp(1_690_785_424_366_972),
       ],
       [
-        data_type.Integer(2),
-        data_type.String("Cash"),
-        data_type.Null,
-        data_type.Decimal(5000, 2),
-        data_type.Decimal(5000, 2),
-        data_type.Timestamp(1_690_785_424_366_000),
+        dt.Integer(2),
+        dt.String("Cash"),
+        dt.Null,
+        dt.Decimal(5000, 2),
+        dt.Decimal(5000, 2),
+        dt.Timestamp(1_690_785_424_366_000),
       ],
     ]),
     saved_accounts,

@@ -2,6 +2,7 @@ import birl/time
 import gleam/bit_string
 import gleam/float
 import gleam/int
+import gleam/order.{Eq, Gt, Lt, Order}
 import gleam/result
 import gleam/string
 
@@ -13,6 +14,7 @@ pub type DataType {
   String(String)
   BitString(BitString)
   Timestamp(Int)
+  Boolean(Bool)
 }
 
 fn int_byte_size(num: Int) -> Int {
@@ -59,6 +61,8 @@ pub fn to_bitstring(data: DataType) -> BitString {
       <<5:8, byte_size:16, timestamp:size(bit_size)>>
     }
     Null -> <<6:8>>
+    Boolean(True) -> <<7:8>>
+    Boolean(False) -> <<8:8>>
   }
 }
 
@@ -95,12 +99,16 @@ pub fn from_bitstring(data: BitString) -> #(DataType, BitString) {
       #(Timestamp(ts), rest)
     }
     <<6:8, rest:bit_string>> -> #(Null, rest)
+    <<7:8, rest:bit_string>> -> #(Boolean(True), rest)
+    <<8:8, rest:bit_string>> -> #(Boolean(False), rest)
   }
 }
 
 pub fn to_string(data: DataType) -> String {
   case data {
     Null -> ""
+    Boolean(True) -> "true"
+    Boolean(False) -> "false"
     Integer(i) -> int.to_string(i)
     Float(f) -> float.to_string(f)
     BitString(b) -> {
@@ -119,5 +127,30 @@ pub fn to_string(data: DataType) -> String {
       |> time.from_unix()
       |> time.to_iso8601()
     }
+  }
+}
+
+pub fn compare(left: DataType, right: DataType) -> Order {
+  case left, right {
+    Integer(l), Integer(r) if l > r -> Gt
+    Integer(l), Integer(r) if l < r -> Lt
+    Integer(l), Integer(r) if l == r -> Eq
+    Float(l), Float(r) -> float.compare(l, r)
+    Float(_), Integer(r) -> compare(left, Float(int.to_float(r)))
+    Integer(_), Float(r) -> compare(left, Integer(float.truncate(r)))
+    Boolean(l), Boolean(r) if l == r -> Eq
+    Boolean(True), Boolean(False) -> Gt
+    Boolean(False), Boolean(True) -> Lt
+    String(l), String(r) -> string.compare(l, r)
+    BitString(l), _ -> {
+      let assert Ok(l) = bit_string.to_string(l)
+      compare(String(l), right)
+    }
+    _, BitString(r) -> {
+      let assert Ok(r) = bit_string.to_string(r)
+      compare(left, String(r))
+    }
+    Timestamp(l), _ -> compare(Integer(l), right)
+    _, Timestamp(r) -> compare(left, Integer(r))
   }
 }

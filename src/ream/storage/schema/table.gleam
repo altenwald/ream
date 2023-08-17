@@ -17,6 +17,7 @@ pub type FieldType {
   String(Size)
   BitString(Size)
   Timestamp
+  Boolean
 }
 
 pub type DataSet {
@@ -24,7 +25,7 @@ pub type DataSet {
 }
 
 pub type DataError {
-  FieldNotFound(String)
+  FieldNotFound(FieldId)
   UnmatchFieldType(FieldType, DataType)
   FieldCannotBeNull(Field)
   PrimaryKeyCannotBeNull(Field)
@@ -101,6 +102,7 @@ fn field_type_to_bitstring(field_type: FieldType) -> BitString {
     BitString(Size(size)) -> <<4:8, size:8>>
     BitString(Unlimited) -> <<4:8, 0:8>>
     Timestamp -> <<5:8, 0:8>>
+    Boolean -> <<6:8, 0:8>>
   }
 }
 
@@ -252,6 +254,7 @@ fn field_type_from_bitstring(field_type: BitString) -> FieldType {
     <<4:8, 0:8>> -> BitString(Unlimited)
     <<4:8, size:8>> -> BitString(Size(size))
     <<5:8, 0:8>> -> Timestamp
+    <<6:8, 0:8>> -> Boolean
   }
 }
 
@@ -286,6 +289,8 @@ fn do_match_fields(
           do_match_fields(rest_fields, rest_rows, acc)
         Timestamp, _, data_type.Timestamp(_) ->
           do_match_fields(rest_fields, rest_rows, acc)
+        Boolean, _, data_type.Boolean(_) ->
+          do_match_fields(rest_fields, rest_rows, acc)
         _, True, data_type.Null -> do_match_fields(rest_fields, rest_rows, acc)
         _, False, data_type.Null -> Error(FieldCannotBeNull(field))
         field_type, _, _ -> Error(UnmatchFieldType(field_type, row))
@@ -294,9 +299,9 @@ fn do_match_fields(
   }
 }
 
-pub fn find_field(table: Table, name: String) -> Result(Field, DataError) {
-  case list.find(table.fields, fn(field) { field.name == name }) {
+pub fn find_field(table: Table, id: FieldId) -> Result(Field, DataError) {
+  case list.find(table.fields, fn(field) { field.id == id }) {
     Ok(f) -> Ok(f)
-    Error(Nil) -> Error(FieldNotFound(name))
+    Error(Nil) -> Error(FieldNotFound(id))
   }
 }
