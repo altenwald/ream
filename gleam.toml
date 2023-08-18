@@ -16,6 +16,7 @@ hug = "~> 0.1"
 gloml = "~> 0.1"
 gleam_erlang = "~> 0.19"
 birl = "~> 0.14"
+nibble = "~> 1.0.0-rc.3"
 
 [dev-dependencies]
 glacier = "~> 0.9"

@@ -30,17 +30,17 @@ We will see these commands from/to the server.
 
 We are going to use the following concepts and types in the protocol:
 
-- **stream name**: The name for the streams should be an alphanumeric name of size between 3 and 20. No symbols or spaces are allowed.
+- **stream name**. The name for the streams should be an alphanumeric name of size between 3 and 20. No symbols or spaces are allowed.
 
-- **event id**: The identifier used for the events. It's used for each stream. When we push an event it's marked with a sequential number. These numbers cannot be duplicated and the server is in charge to assigned them to the event when it's created. The lowest number will be always 1.
+- **event id**. The identifier used for the events. It's used for each stream. When we push an event it's marked with a sequential number. These numbers cannot be duplicated and the server is in charge to assigned them to the event when it's created. The lowest number will be always 1.
 
-- **event**: The content of the event must be a valid JSON, an object that we could filter based on any of the root keys provided.
+- **event**. The content of the event must be a valid JSON, an object that we could filter based on any of the root keys provided.
 
-- **aggregator id**: The identifier used for the aggregator element to be stored. It's recommended you use UUID but actually, you could use whatever while it's identifying uniquely to the aggregation element.
+- **aggregator id**. The identifier used for the aggregator element to be stored. It's recommended you use UUID but actually, you could use whatever while it's identifying uniquely to the aggregation element.
 
-- **aggregator name**: The name assigned to the kind or type of aggregators. This name should be an alphanumeric name of size between 3 and 20. No symbols or spaces are allowed.
+- **aggregator name**. The name assigned to the kind or type of aggregators. This name should be an alphanumeric name of size between 3 and 20. No symbols or spaces are allowed.
 
-- **aggregator content**: The information to be stored for the aggregator. It should be a valid JSON object.
+- **aggregator content**. This is the information stored for the aggregator. It should be a valid JSON object.
 
 ## Commands or Requests
 
@@ -149,8 +149,8 @@ S: EVENT LISTED 2 emails users
 The client could request the removal of an event stream completely from the persistent storage:
 
 ```
-C: EVENT REMOVE emails 1001
-S: EVENT REMOVED emails 1001
+C: EVENT REMOVE emails
+S: EVENT REMOVED emails
 ```
 
 > **Warning**
@@ -163,7 +163,7 @@ The aggregation request is performed by the client and it's storing the informat
 ```
 C: AGGREGATE SET emails 27d1b5a0-c54f-4664-a549-b876b0bb3661 15
 C: {"emails":1002}
-S: AGGREGATE SET emails 27d1b5a0-c54f-4664-a549-b876b0bb3661
+S: AGGREGATE SET DONE emails 27d1b5a0-c54f-4664-a549-b876b0bb3661
 ```
 
 If there are errors presented the return will be as follows:
@@ -242,7 +242,7 @@ The projection stores the information required in the persistent storage. The re
 ```
 C: PROJECTION SET users 130
 C: {"name":"peter","email":"peter@mail.com","position":"developer","address":"street 1","city":"London","country":"UK","salary":1000}
-S: PROJECTION SET users peter
+S: PROJECTION SET DONE users peter
 ```
 
 The content must contain all of the fields indicated in the creation of the projection. The response is indicating the name of the projection created.
@@ -268,10 +268,11 @@ S: [{"name":"peter","email":"peter@mail.com","position":"developer","address":"s
 
 The expression sent to the server is based on the SQL syntax. The response is a list of the projections found. You can use different comparison operators for creating the expression:
 
-- `=`, `!=`, `>`, `<` `>=` `<=`: comparison operators
-- `AND`, `OR`: logical operators
-- `IN`: for checking if the value is inside of a list of values
-- `=~`: for checking if the value is like the regular expression provided
+- `=`, `!=`, `>`, `<` `>=` `<=` comparison operators
+- `AND`, `OR` logical operators
+- `IN` for checking if the value is inside of a list of values
+- `=~` for checking if the value is like the regular expression provided
+- `CONTAINS` is a simple way for strings to know if one is contained in another.
 
 > **Note**
 > The projection should have all of the information you need. If you think you need something like JOINs then you should create a new projection with the information you need.
