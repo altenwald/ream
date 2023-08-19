@@ -24,10 +24,14 @@ pub fn parsing_ping_and_pong_test() {
     parser.process("EVENT SUBSCRIBE users 25")
   let assert Ok(message.EventSubscribed("users", 1, 1001)) =
     parser.process("EVENT SUBSCRIBED users 1 1001")
+  let assert Ok(message.EventListed(["users", "accounts"])) =
+    parser.process("EVENT LISTED 2 users accounts")
 }
 
 pub fn wrong_parsing_test() {
   let assert Error("Invalid message") = parser.process("PGUEA")
   let assert Error("Expected valid name") =
     parser.process("EVENT SUBSCRIBE 99 25")
+  let assert Error("Invalid message") =
+    parser.process("EVENT LISTED 5 users accounts")
 }

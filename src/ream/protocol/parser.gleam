@@ -135,6 +135,55 @@ pub fn parse(tokens) -> Result(message.Message, String) {
             nibble.return(message.EventSubscribed(name, first_id, latest_id))
           },
           {
+            use _ <- nibble.do(nibble.token(Publish))
+            use name <- nibble.do(get_name())
+            use json <- nibble.do(json_parser())
+            nibble.return(message.EventPublish(name, json))
+          },
+          {
+            use _ <- nibble.do(nibble.token(Published))
+            use name <- nibble.do(get_name())
+            use id <- nibble.do(get_id())
+            nibble.return(message.EventPublished(name, id))
+          },
+          {
+            use _ <- nibble.do(nibble.token(Non))
+            use _ <- nibble.do(nibble.token(Published))
+            use name <- nibble.do(get_name())
+            use reason <- nibble.do(get_reason())
+            nibble.return(message.EventNonPublished(name, reason))
+          },
+          {
+            use _ <- nibble.do(nibble.token(Unsubscribe))
+            use name <- nibble.do(get_name())
+            nibble.return(message.EventUnsubscribe(name))
+          },
+          {
+            use _ <- nibble.do(nibble.token(Unsubscribed))
+            use name <- nibble.do(get_name())
+            nibble.return(message.EventUnsubscribed(name))
+          },
+          {
+            use _ <- nibble.do(nibble.token(List))
+            nibble.return(message.EventList)
+          },
+          {
+            use _ <- nibble.do(nibble.token(Listed))
+            use size <- nibble.do(get_size())
+            use names <- nibble.do(nibble.take_exactly(get_name(), size))
+            nibble.return(message.EventListed(names))
+          },
+          {
+            use _ <- nibble.do(nibble.token(Remove))
+            use name <- nibble.do(get_name())
+            nibble.return(message.EventRemove(name))
+          },
+          {
+            use _ <- nibble.do(nibble.token(Removed))
+            use name <- nibble.do(get_name())
+            nibble.return(message.EventRemoved(name))
+          },
+          {
             use name <- nibble.do(get_name())
             use id <- nibble.do(get_id())
             use _size <- nibble.do(get_size())
@@ -200,6 +249,15 @@ fn get_size() {
   case size {
     Integer(size) -> nibble.return(size)
     _ -> nibble.fail("Expected a valid size value")
+  }
+}
+
+fn get_reason() {
+  use reason <- nibble.do(nibble.any())
+
+  case reason {
+    StringToken(str) -> nibble.return(str)
+    _ -> nibble.fail("Expected error reason, no double-quoted text found")
   }
 }
 

@@ -50,7 +50,7 @@ pub type Message {
     first_event_id: EventId,
     last_event_id: EventId,
   )
-  EventPublish(EventQueueName, BitString)
+  EventPublish(EventQueueName, Json)
   EventPublished(EventQueueName, EventId)
   EventNonPublished(EventQueueName, reason: String)
   EventUnsubscribe(EventQueueName)
