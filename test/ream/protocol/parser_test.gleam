@@ -34,4 +34,6 @@ pub fn wrong_parsing_test() {
     parser.process("EVENT SUBSCRIBE 99 25")
   let assert Error("Invalid message") =
     parser.process("EVENT LISTED 5 users accounts")
+  let assert Error("Invalid message") =
+    parser.process("EVENT users 1001 200\n{\"name\":")
 }
