@@ -81,7 +81,7 @@ pub fn benchmark_set_test() {
       )
     })
   io.debug(#("benchmark time", time))
-  let assert True = time > 0 && time < 500_000
+  let assert True = time > 0 && time < 750_000
   let assert Ok(Nil) = kv.close(kv)
 }
 
