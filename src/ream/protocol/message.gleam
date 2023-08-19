@@ -30,10 +30,20 @@ pub type ProjectionField {
   ProjectionField(name: ProjectionFieldName, index: ProjectionIndex)
 }
 
+pub type Json {
+  Array(List(Json))
+  False
+  Null
+  Number(Float)
+  Object(List(#(String, Json)))
+  String(String)
+  True
+}
+
 pub type Message {
   Ping
   Pong
-  Event(EventQueueName, EventId, BitString)
+  Event(EventQueueName, EventId, Json)
   EventSubscribe(EventQueueName, EventId)
   EventSubscribed(
     EventQueueName,
