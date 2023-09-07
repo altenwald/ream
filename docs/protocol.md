@@ -1,12 +1,12 @@
 # Protocol
 
-The protocol to be connected to the database is based on plain TCP and no credentials for the first version. The system is based on asynchronous communication, when we are connected the system is giving us the banner:
+The protocol to be connected to the database is based on plain TCP and no credentials for the first version. The system is based on asynchronous communication, when we are connected the system gives us the banner:
 
 ```
 REAM 1.0
 ```
 
-After that, we can send whenever a command and the server is sending us whenever information. For example, if an event is published by another system, we are receiving this:
+After that, we can send a command and the server sends us whatever information. For example, if an event is published by another system, we are receiving this:
 
 ```
 EVENT emails 1001 16
@@ -32,7 +32,7 @@ We are going to use the following concepts and types in the protocol:
 
 - **stream name**. The name for the streams should be an alphanumeric name of size between 3 and 20. No symbols or spaces are allowed.
 
-- **event id**. The identifier used for the events. It's used for each stream. When we push an event it's marked with a sequential number. These numbers cannot be duplicated and the server is in charge to assigned them to the event when it's created. The lowest number will be always 1.
+- **event id**. The identifier used for the events. It's used for each stream. When we push an event it's marked with a sequential number. These numbers cannot be duplicated and the server is in charge of assigning them to the event when it's created. The lowest number will be always 1.
 
 - **event**. The content of the event must be a valid JSON, an object that we could filter based on any of the root keys provided.
 
@@ -74,13 +74,13 @@ The same logic could be implemented in the client. We could send a `PING` to the
 The information received from the server. We are receiving events when they are published and stored correctly in the persistent storage. The event is formed using the stream name, the event ID and size, and then the event content as a new line:
 
 ```
-S: EVENT emails 1001 15
+S: EVENT emails 1001 16
 S: {"name":"peter"}
 ```
 
 ### EVENT SUBSCRIBE
 
-The subscription is performed only from the client to the server. The subscription is accepting the following parameters:
+The subscription is performed only from the client to the server. The subscription accepts the following parameters:
 
 - `stream` the name to the stream to be subscribed.
 - `event-id` the ID of the event where we want to start to retrieve the events.
@@ -88,13 +88,13 @@ The subscription is performed only from the client to the server. The subscripti
 > **Warning**
 > Be careful indicating a lower number for a stream very populated because it could block the responses from the server until you receive all of the events required.
 
-The response to this request is a summary indicating the initial ID for the event we are going to receive and the last ID for the last event we are going to receive and, of course, all of the events, one by one:
+The response to this request is a summary indicating the initial ID for the event we are going to receive the last ID for the last event we are going to receive and, of course, all of the events, one by one:
 
 ```
 C: EVENT SUBSCRIBE emails 1
 S: EVENT SUBSCRIBED emails 1 1001
 S: ...
-S: EVENT emails 1001 15
+S: EVENT emails 1001 16
 S: {"name":"peter"}
 ```
 
@@ -107,7 +107,7 @@ S: EVENT SUBSCRIBED emails EMPTY
 
 ### EVENT PUBLISH
 
-The client could request the store of an event to the server. The publication of the event requires the name of the stream where the event is going to be published and the size of the event. Followed to that, the event is sent:
+The client could request the store of an event to the server. The publication of the event requires the name of the stream where the event is going to be published and the size of the event. Following that, the event is sent:
 
 ```
 C: EVENT PUBLISH emails 14
@@ -120,7 +120,7 @@ If the event couldn't be published then the response will be:
 ```
 C: EVENT PUBLISH emails 14
 C: {"name":"peter"}
-S: EVENT NON PUBLISHED emails "Invalid JSON"
+S: EVENT NON PUBLISHED emails "Invalid message"
 ```
 
 ### EVENT UNSUBSCRIBE
@@ -158,13 +158,16 @@ S: EVENT REMOVED emails
 
 ### AGGREGATE SET
 
-The aggregation request is performed by the client and it's storing the information from an aggregator into the persistent storage. The aggregator should be identified by a name and ID for the aggregator, the size of the aggregator content and then the content: 
+The aggregation request is performed by the client and it stores the information from an aggregator into the persistent storage. The aggregator should be identified by a name and ID for the aggregator, the size of the aggregator content and then the content:
 
 ```
-C: AGGREGATE SET emails 27d1b5a0-c54f-4664-a549-b876b0bb3661 15
+C: AGGREGATE SET emails "27d1b5a0-c54f-4664-a549-b876b0bb3661" 15
 C: {"emails":1002}
-S: AGGREGATE SET DONE emails 27d1b5a0-c54f-4664-a549-b876b0bb3661
+S: AGGREGATE SET DONE emails "27d1b5a0-c54f-4664-a549-b876b0bb3661"
 ```
+
+> **Warning**
+> The IDs here are related to UUID because aggregate works using those as IDs. We could indicate them in two different ways: the string way which is the hexadecimal representation with or without dashes and the integer representation.
 
 If there are errors presented the return will be as follows:
 
@@ -176,7 +179,7 @@ S: AGGREGATE NON SET emails 1 "Invalid JSON"
 
 ### AGGREGATE REMOVE
 
-It's similar to `AGGREGATE SET` but it's not indicating the content, only the name and ID for the aggregation to be deleted. The response is a bit different:
+It's similar to the `AGGREGATE SET` but it's not indicating the content, only the name and ID for the aggregation to be deleted. The response is a bit different:
 
 ```
 C: AGGREGATE REMOVE emails 27d1b5a0-c54f-4664-a549-b876b0bb3661
@@ -211,18 +214,18 @@ C: AGGREGATE LIST
 S: AGGREGATE LISTED 5 emails users accounts orders payments
 ```
 
-The return is giving the number of aggregators and the list of them.
+The return gives the number of aggregators and the list of them.
 
 ### PROJECTION CREATE
 
-The projection stores information processed after the event and it's adding the information like with the aggregator but adds more indexes for searching the information based on different fields. Using this request we can create a projection with the following information:
+The projection stores information processed after the event and it adds the information like with the aggregator but adds more indexes for searching the information based on different fields. Using this request we can create a projection with the following information:
 
 ```
 C: PROJECTION CREATE users 6 +name +email position address city *country salary
 S: PROJECTION CREATED users
 ```
 
-The plus (+) signs are indicating the fields are unique keys and the star (*) signs are indicating the fields are indexes. The response is indicating the name of the projection created.
+The plus (+) signs indicate the fields are unique keys and the star (*) signs indicate the fields are indexes. The response indicates the name of the projection created.
 
 ### PROJECTION DROP
 
@@ -245,7 +248,7 @@ C: {"name":"peter","email":"peter@mail.com","position":"developer","address":"st
 S: PROJECTION SET DONE users peter
 ```
 
-The content must contain all of the fields indicated in the creation of the projection. The response is indicating the name of the projection created.
+The content must contain all of the fields indicated in the creation of the projection. The response indicates the name of the projection created.
 
 If there are errors presented the return will be as follows:
 
@@ -257,7 +260,7 @@ S: PROJECTION NON SET users "Missing required fields"
 
 ### PROJECTION SELECT
 
-It's retrieving the projection from the persistent storage based on the expression provided:
+It retrieves the projection from the persistent storage based on the expression provided:
 
 ```
 C: PROJECTION SELECT users 84
@@ -288,7 +291,7 @@ C: {"position":"manager"}
 S: PROJECTION UPDATED users 1
 ```
 
-The return is indicating the number of projections updated.
+The return indicates the number of projections updated.
 
 In this case, we are sending two expressions, the first one is for selecting the projections to be updated and the second one is for updating the information. As an advantage, the JSON sent will be evaluated, so we can add expressions like:
 
@@ -301,7 +304,7 @@ S: PROJECTION UPDATED users 1
 
 ### PROJECTION DELETE
 
-it's deleting the projection entries from the persistent storage based on the expression provided:
+It deletes the projection entries from the persistent storage based on the expression provided:
 
 ```
 C: PROJECTION DELETE users 17
@@ -309,4 +312,4 @@ C: city IN ("Miami")
 S: PROJECTION DELETED users 12
 ```
 
-We are removing the projections based on the expression provided. The return is indicating the number of projections deleted.
+We are removing the projections based on the expression provided. The return indicates the number of projections deleted.

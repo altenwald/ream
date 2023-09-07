@@ -30,27 +30,17 @@ pub type ProjectionField {
   ProjectionField(name: ProjectionFieldName, index: ProjectionIndex)
 }
 
-pub type Json {
-  Array(List(Json))
-  False
-  Null
-  Number(Float)
-  Object(List(#(String, Json)))
-  String(String)
-  True
-}
-
 pub type Message {
   Ping
   Pong
-  Event(EventQueueName, EventId, Json)
+  Event(EventQueueName, EventId, size: Int, content: BitString)
   EventSubscribe(EventQueueName, EventId)
   EventSubscribed(
     EventQueueName,
     first_event_id: EventId,
     last_event_id: EventId,
   )
-  EventPublish(EventQueueName, Json)
+  EventPublish(EventQueueName, size: Int, content: BitString)
   EventPublished(EventQueueName, EventId)
   EventNonPublished(EventQueueName, reason: String)
   EventUnsubscribe(EventQueueName)
@@ -59,13 +49,13 @@ pub type Message {
   EventListed(List(EventQueueName))
   EventRemove(EventQueueName)
   EventRemoved(EventQueueName)
-  AggregateSet(Aggregator, AggregateId, content: BitString)
+  AggregateSet(name: Aggregator, id: AggregateId, size: Int, content: BitString)
   AggregateSetDone(Aggregator, AggregateId)
   AggregateNonSet(Aggregator, AggregateId, reason: String)
   AggregateRemove(Aggregator, AggregateId)
   AggregateRemoved(Aggregator, AggregateId)
   AggregateGet(Aggregator, AggregateId)
-  AggregateGot(Aggregator, AggregateId, content: BitString)
+  AggregateGot(Aggregator, AggregateId, size: Int, content: BitString)
   AggregateNonGot(Aggregator, AggregateId, reason: String)
   AggregateList
   AggregateListed(List(Aggregator))

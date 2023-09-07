@@ -1,10 +1,12 @@
-import gleam/function
-import gleam/int
+import gleam/bit_string
 import gleam/list
+import gleam/result.{try}
 import gleam/set
+import gleam/string
 import nibble
 import nibble/lexer
 import ream/protocol/message
+import ream/uuid
 
 pub type Token {
   Ping
@@ -12,6 +14,7 @@ pub type Token {
   Event
   Subscribe
   Subscribed
+  Empty
   Publish
   Published
   Non
@@ -39,21 +42,18 @@ pub type Token {
   Deleted
   Name(String)
   Integer(Int)
-  Colon
-  Comma
-  FalseToken
-  LBrace
-  LBracket
-  NullToken
-  Number(Float)
-  RBrace
-  RBracket
   StringToken(String)
-  TrueToken
 }
 
 pub fn tokenize(text: String) {
-  let keywords = set.from_list(["PING", "PONG", "SUBSCRIBE", "SUBSCRIBED"])
+  let keywords =
+    set.from_list([
+      "PING", "PONG", "SUBSCRIBE", "SUBSCRIBED", "EMPTY", "PUBLISH", "PUBLISHED",
+      "NON", "UNSUBSCRIBE", "UNSUBSCRIBED", "LIST", "LISTED", "REMOVE",
+      "REMOVED", "AGGREGATE", "SET", "DONE", "GET", "GOT", "PROJECTION",
+      "CREATE", "CREATED", "DROP", "DROPPED", "SELECT", "SELECTED", "UPDATE",
+      "UPDATED", "DELETE", "DELETED", "EVENT",
+    ])
 
   let lexer =
     lexer.simple([
@@ -62,6 +62,7 @@ pub fn tokenize(text: String) {
       lexer.keyword("EVENT", "[^\\w\\d]", Event),
       lexer.keyword("SUBSCRIBE", "[^\\w\\d]", Subscribe),
       lexer.keyword("SUBSCRIBED", "[^\\w\\d]", Subscribed),
+      lexer.keyword("EMPTY", "[^\\w\\d]", Empty),
       lexer.keyword("PUBLISH", "[^\\w\\d]", Publish),
       lexer.keyword("PUBLISHED", "[^\\w\\d]", Published),
       lexer.keyword("NON", "[^\\w\\d]", Non),
@@ -89,22 +90,122 @@ pub fn tokenize(text: String) {
       lexer.keyword("DELETED", "[^\\w\\d]", Deleted),
       lexer.identifier("[A-Za-z]", "[A-Za-z0-9_]", keywords, Name),
       lexer.int(Integer),
-      lexer.number(function.compose(int.to_float, Number), Number),
-      lexer.token(":", Colon),
-      lexer.token(",", Comma),
-      lexer.token("false", FalseToken),
-      lexer.token("{", LBrace),
-      lexer.token("[", LBracket),
-      lexer.token("null", NullToken),
-      lexer.token("true", TrueToken),
-      lexer.token("}", RBrace),
-      lexer.token("]", RBracket),
       lexer.string("\"", StringToken),
       lexer.whitespace(Nil)
       |> lexer.ignore(),
     ])
 
   lexer.run(text, lexer)
+}
+
+fn parse_event() {
+  {
+    use _ <- nibble.do(nibble.token(Event))
+    nibble.one_of([
+      {
+        use _ <- nibble.do(nibble.token(Subscribe))
+        use name <- nibble.do(get_name())
+        use id <- nibble.do(get_id())
+        nibble.return(message.EventSubscribe(name, id))
+      },
+      {
+        use _ <- nibble.do(nibble.token(Subscribed))
+        use name <- nibble.do(get_name())
+        use #(first_id, latest_id) <- nibble.do(nibble.one_of([
+          {
+            use first_id <- nibble.do(get_id())
+            use latest_id <- nibble.do(get_id())
+            nibble.return(#(first_id, latest_id))
+          },
+          {
+            use _ <- nibble.do(nibble.token(Empty))
+            nibble.return(#(0, 0))
+          },
+        ]))
+        nibble.return(message.EventSubscribed(name, first_id, latest_id))
+      },
+      {
+        use _ <- nibble.do(nibble.token(Publish))
+        use name <- nibble.do(get_name())
+        use size <- nibble.do(get_size())
+        nibble.return(message.EventPublish(name, size, <<>>))
+      },
+      {
+        use _ <- nibble.do(nibble.token(Published))
+        use name <- nibble.do(get_name())
+        use id <- nibble.do(get_id())
+        nibble.return(message.EventPublished(name, id))
+      },
+      {
+        use _ <- nibble.do(nibble.token(Non))
+        use _ <- nibble.do(nibble.token(Published))
+        use name <- nibble.do(get_name())
+        use reason <- nibble.do(get_reason())
+        nibble.return(message.EventNonPublished(name, reason))
+      },
+      {
+        use _ <- nibble.do(nibble.token(Unsubscribe))
+        use name <- nibble.do(get_name())
+        nibble.return(message.EventUnsubscribe(name))
+      },
+      {
+        use _ <- nibble.do(nibble.token(Unsubscribed))
+        use name <- nibble.do(get_name())
+        nibble.return(message.EventUnsubscribed(name))
+      },
+      {
+        use _ <- nibble.do(nibble.token(List))
+        nibble.return(message.EventList)
+      },
+      {
+        use _ <- nibble.do(nibble.token(Listed))
+        use size <- nibble.do(get_size())
+        use names <- nibble.do(nibble.take_exactly(get_name(), size))
+        nibble.return(message.EventListed(names))
+      },
+      {
+        use _ <- nibble.do(nibble.token(Remove))
+        use name <- nibble.do(get_name())
+        nibble.return(message.EventRemove(name))
+      },
+      {
+        use _ <- nibble.do(nibble.token(Removed))
+        use name <- nibble.do(get_name())
+        nibble.return(message.EventRemoved(name))
+      },
+      {
+        use name <- nibble.do(get_name())
+        use id <- nibble.do(get_id())
+        use size <- nibble.do(get_size())
+        nibble.return(message.Event(name, id, size, <<>>))
+      },
+    ])
+  }
+}
+
+fn parse_aggregate() {
+  {
+    use _ <- nibble.do(nibble.token(Aggregate))
+    nibble.one_of([
+      {
+        use _ <- nibble.do(nibble.token(Set))
+        nibble.one_of([
+          {
+            use _ <- nibble.do(nibble.token(Done))
+            use name <- nibble.do(get_name())
+            use uuid <- nibble.do(get_uuid())
+            nibble.return(message.AggregateSetDone(name, uuid))
+          },
+          {
+            use name <- nibble.do(get_name())
+            use uuid <- nibble.do(get_uuid())
+            use size <- nibble.do(get_size())
+            nibble.return(message.AggregateSet(name, uuid, size, <<>>))
+          },
+        ])
+      },
+    ])
+  }
 }
 
 pub fn parse(tokens) -> Result(message.Message, String) {
@@ -118,80 +219,8 @@ pub fn parse(tokens) -> Result(message.Message, String) {
         use _ <- nibble.do(nibble.token(Pong))
         nibble.return(message.Pong)
       },
-      {
-        use _ <- nibble.do(nibble.token(Event))
-        nibble.one_of([
-          {
-            use _ <- nibble.do(nibble.token(Subscribe))
-            use name <- nibble.do(get_name())
-            use id <- nibble.do(get_id())
-            nibble.return(message.EventSubscribe(name, id))
-          },
-          {
-            use _ <- nibble.do(nibble.token(Subscribed))
-            use name <- nibble.do(get_name())
-            use first_id <- nibble.do(get_id())
-            use latest_id <- nibble.do(get_id())
-            nibble.return(message.EventSubscribed(name, first_id, latest_id))
-          },
-          {
-            use _ <- nibble.do(nibble.token(Publish))
-            use name <- nibble.do(get_name())
-            use json <- nibble.do(json_parser())
-            nibble.return(message.EventPublish(name, json))
-          },
-          {
-            use _ <- nibble.do(nibble.token(Published))
-            use name <- nibble.do(get_name())
-            use id <- nibble.do(get_id())
-            nibble.return(message.EventPublished(name, id))
-          },
-          {
-            use _ <- nibble.do(nibble.token(Non))
-            use _ <- nibble.do(nibble.token(Published))
-            use name <- nibble.do(get_name())
-            use reason <- nibble.do(get_reason())
-            nibble.return(message.EventNonPublished(name, reason))
-          },
-          {
-            use _ <- nibble.do(nibble.token(Unsubscribe))
-            use name <- nibble.do(get_name())
-            nibble.return(message.EventUnsubscribe(name))
-          },
-          {
-            use _ <- nibble.do(nibble.token(Unsubscribed))
-            use name <- nibble.do(get_name())
-            nibble.return(message.EventUnsubscribed(name))
-          },
-          {
-            use _ <- nibble.do(nibble.token(List))
-            nibble.return(message.EventList)
-          },
-          {
-            use _ <- nibble.do(nibble.token(Listed))
-            use size <- nibble.do(get_size())
-            use names <- nibble.do(nibble.take_exactly(get_name(), size))
-            nibble.return(message.EventListed(names))
-          },
-          {
-            use _ <- nibble.do(nibble.token(Remove))
-            use name <- nibble.do(get_name())
-            nibble.return(message.EventRemove(name))
-          },
-          {
-            use _ <- nibble.do(nibble.token(Removed))
-            use name <- nibble.do(get_name())
-            nibble.return(message.EventRemoved(name))
-          },
-          {
-            use name <- nibble.do(get_name())
-            use id <- nibble.do(get_id())
-            use _size <- nibble.do(get_size())
-            use json <- nibble.do(json_parser())
-            nibble.return(message.Event(name, id, json))
-          },
-        ])
-      },
+      parse_event(),
+      parse_aggregate(),
     ])
   }
 
@@ -201,9 +230,54 @@ pub fn parse(tokens) -> Result(message.Message, String) {
   }
 }
 
+fn get_content(text: String, size: Int) -> Result(BitString, String) {
+  case string.byte_size(text) == size {
+    True -> {
+      case
+        text
+        |> bit_string.from_string()
+        |> bit_string.slice(0, size)
+      {
+        Ok(text) -> Ok(text)
+        Error(Nil) ->
+          Error("Invalid message, provided size is larger than content")
+      }
+    }
+    False -> Error("Invalid message, provided size is different from content")
+  }
+}
+
+fn adjust(
+  parsed: message.Message,
+  text: String,
+) -> Result(message.Message, String) {
+  case parsed {
+    message.Event(name, id, size, _content) -> {
+      use content <- try(get_content(text, size))
+      Ok(message.Event(name, id, size, content))
+    }
+    message.EventPublish(name, size, _content) -> {
+      use content <- try(get_content(text, size))
+      Ok(message.EventPublish(name, size, content))
+    }
+    message.AggregateSet(name, id, size, _content) -> {
+      use content <- try(get_content(text, size))
+      Ok(message.AggregateSet(name, id, size, content))
+    }
+    _ -> Ok(parsed)
+  }
+}
+
 pub fn process(text: String) -> Result(message.Message, String) {
-  case tokenize(text) {
-    Ok(tokens) -> parse(tokens)
+  let #(line, text) = case string.split_once(text, "\n") {
+    Ok(result) -> result
+    Error(Nil) -> #(text, "")
+  }
+  case tokenize(line) {
+    Ok(tokens) -> {
+      use parsed <- try(parse(tokens))
+      adjust(parsed, text)
+    }
     Error(_) -> Error("Cannot parse text")
   }
 }
@@ -221,7 +295,7 @@ fn dead_end_filter(errors) -> String {
     )
   case error_msgs {
     [msg, ..] -> msg
-    _ -> "Invalid message"
+    _ -> "Invalid message, cannot parse (dead end)"
   }
 }
 
@@ -243,6 +317,19 @@ fn get_id() {
   }
 }
 
+fn get_uuid() {
+  use uuid <- nibble.do(nibble.any())
+
+  case uuid {
+    Integer(i) -> nibble.return(i)
+    StringToken(s) -> {
+      let b = uuid.from_string(s)
+      nibble.return(uuid.to_int(b))
+    }
+    _error -> nibble.fail("Expected a valid UUID")
+  }
+}
+
 fn get_size() {
   use size <- nibble.do(nibble.any())
 
@@ -259,74 +346,4 @@ fn get_reason() {
     StringToken(str) -> nibble.return(str)
     _ -> nibble.fail("Expected error reason, no double-quoted text found")
   }
-}
-
-// got borrowed from:
-// https://github.com/hayleigh-dot-dev/gleam-nibble/blob/v1.0.0-rc.3/test/examples/json_test.gleam
-type Context {
-  InArray
-  InObject
-}
-
-fn json_parser() {
-  nibble.one_of([
-    // Structures
-    array_parser()
-    |> nibble.in(InArray),
-    object_parser()
-    |> nibble.in(InObject),
-    literal_parser(),
-  ])
-}
-
-fn array_parser() {
-  use _ <- nibble.do(nibble.token(LBracket))
-  use elements <- nibble.do(nibble.sequence(
-    nibble.lazy(json_parser),
-    nibble.token(Comma),
-  ))
-  use _ <- nibble.do(nibble.token(RBracket))
-
-  nibble.return(message.Array(elements))
-}
-
-fn object_parser() {
-  use _ <- nibble.do(nibble.token(LBrace))
-  use elements <- nibble.do(nibble.sequence(
-    nibble.lazy(object_element_parser),
-    nibble.token(Comma),
-  ))
-  use _ <- nibble.do(nibble.token(RBrace))
-
-  nibble.return(message.Object(elements))
-}
-
-fn object_element_parser() {
-  use key <- nibble.do(nibble.backtrackable({
-    use t <- nibble.do(nibble.any())
-
-    case t {
-      StringToken(s) -> nibble.return(s)
-      _ -> nibble.fail("Expected string object key")
-    }
-  }))
-  use _ <- nibble.do(nibble.token(Colon))
-  use value <- nibble.do(nibble.lazy(json_parser))
-
-  nibble.return(#(key, value))
-}
-
-fn literal_parser() {
-  nibble.backtrackable({
-    use t <- nibble.do(nibble.any())
-
-    case t {
-      Number(n) -> nibble.return(message.Number(n))
-      StringToken(s) -> nibble.return(message.String(s))
-      TrueToken -> nibble.return(message.True)
-      FalseToken -> nibble.return(message.False)
-      NullToken -> nibble.return(message.Null)
-      _ -> nibble.fail("Expected a literal value")
-    }
-  })
 }
