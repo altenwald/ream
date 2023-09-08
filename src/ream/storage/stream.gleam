@@ -1,3 +1,59 @@
+//// The event sourcing has the following actions:
+//// 
+//// - Append a new event to the corresponding stream.
+//// - Retrieve a list of events based on the correlative ID.
+//// 
+//// That said, it's clear that if we don't need to modify that data we could
+//// create files where that information could be placed with different limits,
+//// we need to create a new file:
+//// 
+//// - based on the date, or
+//// - based on the size of the file, or
+//// - based on the number of elements inside the file.
+//// 
+//// The first one is not a good fit because if one stream isn't used only on
+//// specific days it could mean there could be empty files and very populated
+//// files. The second one looks good but it could be happening that each event
+//// could be big enough to overflow the limit and we get a file per event. The
+//// third one is a bit risky as well in the same case of the size, if the
+//// events are big and the number is too high it could mean the file could be
+//// huge and difficult to navigate.
+//// 
+//// I think the combination of the second of the third could give us a good
+//// solution. I mean, we could define a minimum limit for the file and if that
+//// limit is reached then one condition is achieved. The second condition
+//// should be a minimum of elements in terms of getting that number of
+//// elements even if the limit of the file was reached.
+//// 
+//// We could implement much more flexible ways for handling the files but for
+//// the first version I think that the configuration for:
+//// 
+//// - `events.min_items_per_file` using a default value of 1000.
+//// - `events.min_file_size` using a default value of 100M.
+//// 
+//// Then we are going to create files based on these parameters, and we are
+//// going to be appending that information inside the files. The index for the
+//// event sourcing is going to be another file where we are going to be
+//// appending a 64-bit integer where the first 16 bits are going to be used to
+//// identify the file and the remaining 48 bits are going to be used to store
+//// the size where the event is starting. That said, we just defined some
+//// limits:
+//// 
+//// - The maximum size for an event is 281,474,976,710,656 (2^48) or 256TB.
+////   But I don't recommend using a size higher than 1MB for an event even
+////   less if we are going to trigger thousands of events per second.
+//// - The maximum number of files kept in the system will be 65,536 (2^16).
+//// 
+//// If we are sending events of 1KB based on the default configuration that
+//// means we could store 100,000 events for each file or a total of
+//// 6,553,600,000 events using 6TB approx.
+//// 
+//// The index for events is going to be useful when we need to retrieve an
+//// event based on the correlative ID. Given the number we read that position
+//// and retrieve the information about which file we should ask and the size
+//// where that event is starting. The event storage will provide us with the
+//// size of the event and the content for the event.
+
 import gleam/bit_string
 import gleam/erlang/file
 import gleam/int

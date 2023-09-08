@@ -23,7 +23,5 @@ glacier = "~> 0.9"
 
 [documentation]
 pages = [
-    { title = "LICENSE", path = "license.html", source = "LICENSE" },
-    { title = "Protocol", path = "protocol.html", source = "docs/protocol.md" },
-    { title = "Storage", path = "storage.html", source = "docs/storage.md" }
+    { title = "LICENSE", path = "license.html", source = "LICENSE" }
 ]

@@ -1,7 +1,58 @@
+//// Indeed, we have only schemas for projections and the rest of the systems
+//// are only storing information about:
+//// 
+//// - `name` for the stream of events, collection of similar aggregators or
+////   tables for projections.
+//// - The `type` is one of the following: `stream``, `aggregator`, or
+////   `projection`.
+//// 
+//// The files for these elements are going to be created under a directory
+//// with that name: `type/name`; i.e. if we are creating the stream `users`
+//// then the files for storing the events for that stream will be placed
+//// under `stream/users`.
+//// 
+//// In the case of the projections, we are placing an extra file inside of
+//// that directory called `schema`. The file contains a list of the fields
+//// available for the projection. The content for each field is:
+//// 
+//// - `name` of the field.
+//// - `type` of the filed. It could be one of these: `normal`, `index`, or
+////   `unique`.
+//// 
+//// This way we have all of the information about the information we could
+//// find about the projection and the information to generate the indexes.
+//// 
 //// Schema is helping you to create structured data to be stored in the disk.
 //// The schema is behaving as the most of the SQL-like databases around, it's
 //// letting us configure the tables, their primary keys, and unique and
 //// normal indexes.
+//// 
+//// The projections have indexes a bit more complex and the requests could
+//// filter the information to be retrieved based on an expression provided.
+//// That's because each file is going to process its indexes. This is great
+//// because we can parallelize the requests for reading and writing but it
+//// makes a bit more difficult the unique indexes.
+//// 
+//// About the indexes, we have:
+//// 
+//// - Unique indexes are keeping a record per index across all of the files.
+//// - Indexes are keeping many records per index. There will be one index
+////   per file.
+//// 
+//// The only problem is about writing if we have defined unique keys. This
+//// is going to have a simplified version out of the files for assigning the
+//// unique index or refusing it, we are going to use a Cuckoo filter to ensure
+//// the index wasn't inside of any of the files.
+//// 
+//// The storage of the projections is going to take place as the aggregations
+//// and in the same way, we will have the vacuum of the information with the
+//// following parameters:
+//// 
+//// - `projector.vacuum_factor` where we specify a number between 1 and 100
+////   and if that percentage of elements are removed then the file is removed
+////   and all of their elements to a new file. The default value is 100.
+//// - `projector.vacuum_frequency` indicates the time in seconds when the
+////   vacuum is triggered. The default value is 86400 (one day).
 
 import gleam/bit_string
 import gleam/list

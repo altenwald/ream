@@ -5,8 +5,7 @@
 
 REAM is an event-sourcing system.
 
-The REAM server is a simple TCP server that's receiving events from aggregators which are
-sending the event and a status update. The idea is:
+The REAM server is a simple TCP server that receives events from aggregators that are sending the event and a status update. The idea is:
 
 - The Aggregator receives a command.
 - The aggregator validates the command and generates:
@@ -18,7 +17,7 @@ sending the event and a status update. The idea is:
 Therefore we have three different but related storage:
 
 - Events. It's getting events in different streams. We can create as many streams as we need.
-- Aggregations. It's storing the state for the aggregators based on the last processed event for a specific stream.
+- Aggregations. It stores the state for the aggregators based on the last processed event for a specific stream.
 - Projections. Stored the projections based on the information provided by the projectors.
 
 The main idea is to provide an easy way for implementing aggregators and projectors to process the data we need in the way we need it.

@@ -1,3 +1,40 @@
+//// The aggregators are storing their information based on a key and a value,
+//// a document. This content is going to be updated and read more than
+//// inserted as a new element. However, I think the best approach is a
+//// copy-on-write strategy. If we need to modify the aggregator we insert a
+//// new element inside of the files in the same way we do with the events and
+//// then we update the index.
+//// 
+//// To avoid some race conditions that could arise reading the aggregator when
+//// we are processing an update the process in charge of the modification
+//// could lock the possible reading actions until the new element is updated
+//// inside of the index. However, there are situations where eventual
+//// consistency is ok. We could implement a configuration parameter:
+//// 
+//// - `aggregator.read_lock_when_writing` using a default value of `true`,
+////   we encourage consistency.
+//// 
+//// > **Note**
+//// > However, it's not going to lock the events and it's not going to lock
+//// > other aggregators or projections.
+//// 
+//// The process file has the information about the elements it's storing and
+//// if all of them are marked as deleted, then the file is removed. Based on
+//// that the information of the aggregators could be generated again from the
+//// events makes no sense to keep that information.
+//// 
+//// As another option, we could add a frequency to perform a data vacuum.
+//// That's going to be the process to get the information still valid from the
+//// older files where there is removed information and we put that information
+//// as if that was called to be modified. It's going into the new files and
+//// then the old file is removed. We could define:
+//// 
+//// - `aggregator.vacuum_factor` where we specify a number between 1 and 100
+////   and if that percentage of elements is removed then the file is removed
+////   and all of their elements to a new file. The default value is 100.
+//// - `aggregator.vacuum_frequency` indicates the time in seconds when the
+////   vacuum is triggered. The default value is 86400 (one day).
+
 import gleam/bit_string
 import gleam/map.{Map}
 import gleam/option.{None, Some}
