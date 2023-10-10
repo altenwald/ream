@@ -26,6 +26,20 @@ fn int_byte_size(num: Int) -> Int {
   |> result.unwrap(0)
 }
 
+pub fn to_bool(data: DataType) -> Bool {
+  case data {
+    Null -> False
+    Integer(0) -> False
+    Float(0.0) -> False
+    Decimal(0, _) -> False
+    String("") -> False
+    BitString(<<>>) -> False
+    Timestamp(0) -> False
+    Boolean(False) -> False
+    _ -> True
+  }
+}
+
 pub fn to_bitstring(data: DataType) -> BitString {
   case data {
     Integer(i) -> {

@@ -194,13 +194,19 @@ pub fn find_test() {
   ) =
     schema.find(
       users,
-      schema.GreaterOrEqualThan(schema.Field(3), schema.Literal(dt.Integer(18))),
+      schema.GreaterOrEqualThan(
+        schema.Data(schema.Field(3)),
+        schema.Data(schema.Literal(dt.Integer(18))),
+      ),
     )
 
   let assert #(Ok([[dt.Integer(5), dt.String("jesus"), dt.Integer(3)]]), users) =
     schema.find(
       users,
-      schema.LesserThan(schema.Field(3), schema.Literal(dt.Integer(18))),
+      schema.LesserThan(
+        schema.Data(schema.Field(3)),
+        schema.Data(schema.Literal(dt.Integer(18))),
+      ),
     )
 
   let assert #(
@@ -209,7 +215,10 @@ pub fn find_test() {
   ) =
     schema.find(
       users,
-      schema.Equal(schema.Field(2), schema.Literal(dt.String("manuel"))),
+      schema.Equal(
+        schema.Data(schema.Field(2)),
+        schema.Data(schema.Literal(dt.String("manuel"))),
+      ),
     )
 
   let assert #(
@@ -218,13 +227,19 @@ pub fn find_test() {
   ) =
     schema.find(
       users,
-      schema.Contains(schema.Field(2), schema.Literal(dt.String("man"))),
+      schema.Contains(
+        schema.Data(schema.Field(2)),
+        schema.Data(schema.Literal(dt.String("man"))),
+      ),
     )
 
   let assert #(Ok([]), users) =
     schema.find(
       users,
-      schema.Equal(schema.Field(2), schema.Literal(dt.String("manu"))),
+      schema.Equal(
+        schema.Data(schema.Field(2)),
+        schema.Data(schema.Literal(dt.String("manu"))),
+      ),
     )
 
   let assert Ok(Nil) = schema.close(users)
@@ -296,7 +311,10 @@ pub fn insert_test() {
   ) =
     schema.find(
       accounts,
-      schema.Equal(schema.Field(1), schema.Literal(dt.Integer(1))),
+      schema.Equal(
+        schema.Data(schema.Field(1)),
+        schema.Data(schema.Literal(dt.Integer(1))),
+      ),
     )
 
   let assert Ok(Nil) = schema.close(accounts)
@@ -462,7 +480,10 @@ pub fn create_insert_close_open_find_and_close_test() {
   ) =
     schema.find(
       saved_accounts,
-      schema.Equal(schema.Field(1), schema.Literal(dt.Integer(1))),
+      schema.Equal(
+        schema.Data(schema.Field(1)),
+        schema.Data(schema.Literal(dt.Integer(1))),
+      ),
     )
 
   let #(

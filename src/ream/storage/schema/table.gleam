@@ -26,6 +26,7 @@ pub type DataSet {
 
 pub type DataError {
   FieldNotFound(FieldId)
+  FieldNotFoundByName(String)
   UnmatchFieldType(FieldType, DataType)
   FieldCannotBeNull(Field)
   PrimaryKeyCannotBeNull(Field)
@@ -303,5 +304,12 @@ pub fn find_field(table: Table, id: FieldId) -> Result(Field, DataError) {
   case list.find(table.fields, fn(field) { field.id == id }) {
     Ok(f) -> Ok(f)
     Error(Nil) -> Error(FieldNotFound(id))
+  }
+}
+
+pub fn field_idx(table: Table, name: String) -> Result(Int, DataError) {
+  case list.find(table.fields, fn(field) { field.name == name }) {
+    Ok(f) -> Ok(f.id)
+    Error(Nil) -> Error(FieldNotFoundByName(name))
   }
 }

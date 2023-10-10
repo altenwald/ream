@@ -59,6 +59,7 @@ import gleam/list
 import gleam/map.{Map}
 import gleam/option.{None, Some}
 import gleam/order
+import gleam/regex
 import gleam/result.{try}
 import gleam/string
 import ream/storage/file as fs
@@ -76,12 +77,17 @@ pub type DataOperation {
 }
 
 pub type Operation {
-  Contains(DataOperation, DataOperation)
-  Equal(DataOperation, DataOperation)
-  LesserThan(DataOperation, DataOperation)
-  GreaterThan(DataOperation, DataOperation)
-  LesserOrEqualThan(DataOperation, DataOperation)
-  GreaterOrEqualThan(DataOperation, DataOperation)
+  Data(DataOperation)
+  Array(List(DataOperation))
+  Contains(Operation, Operation)
+  In(Operation, List(DataOperation))
+  Equal(Operation, Operation)
+  NotEqual(Operation, Operation)
+  LesserThan(Operation, Operation)
+  GreaterThan(Operation, Operation)
+  LesserOrEqualThan(Operation, Operation)
+  GreaterOrEqualThan(Operation, Operation)
+  Regex(Operation, Operation)
   Or(Operation, Operation)
   And(Operation, Operation)
   Not(Operation)
@@ -364,13 +370,13 @@ pub fn find(
   operation: Operation,
 ) -> #(Result(List(List(DataType)), SchemaReason), Schema) {
   case operation, schema.table.primary_key {
-    Equal(Field(id1), Literal(key)), [id2] if id1 == id2 -> {
+    Equal(Data(Field(id1)), Data(Literal(key))), [id2] if id1 == id2 -> {
       case get(schema, key) {
         #(Ok(row), schema) -> #(Ok([row]), schema)
         #(Error(reason), schema) -> #(Error(reason), schema)
       }
     }
-    Equal(Literal(key), Field(id1)), [id2] if id1 == id2 -> {
+    Equal(Data(Literal(key)), Data(Field(id1))), [id2] if id1 == id2 -> {
       case get(schema, key) {
         #(Ok(row), schema) -> #(Ok([row]), schema)
         #(Error(reason), schema) -> #(Error(reason), schema)
@@ -403,43 +409,77 @@ fn to_filter_data(
   }
 }
 
+pub type DataListOperationFn =
+  fn(table.Row) -> List(DataType)
+
+fn to_filter_data_list(
+  table: Table,
+  data_operations: List(DataOperation),
+) -> DataListOperationFn {
+  fn(dataset: table.Row) {
+    list.map(
+      data_operations,
+      fn(data_operation) {
+        let f = to_filter_data(table, data_operation)
+        f(dataset)
+      },
+    )
+  }
+}
+
 fn to_filter(schema: Schema, operation: Operation) -> OperationFn {
   case operation {
+    Data(Literal(literal)) -> fn(_) { data_type.to_bool(literal) }
+    Data(Field(field_id)) -> fn(row) {
+      let data = to_filter_data(schema.table, Field(field_id))
+      data_type.to_bool(data(row))
+    }
     All -> fn(_) { True }
     And(a, b) -> fn(row) {
       let left = to_filter(schema, a)
       let right = to_filter(schema, b)
       left(row) && right(row)
     }
-    Equal(a, b) -> fn(row) {
+    Array(_elements) -> fn(_) { True }
+    Equal(Data(a), Data(b)) -> fn(row) {
       let left = to_filter_data(schema.table, a)
       let right = to_filter_data(schema.table, b)
       data_type.compare(left(row), right(row)) == order.Eq
     }
-    GreaterOrEqualThan(a, b) -> fn(row) {
+    NotEqual(Data(a), Data(b)) -> fn(row) {
+      let left = to_filter_data(schema.table, a)
+      let right = to_filter_data(schema.table, b)
+      data_type.compare(left(row), right(row)) != order.Eq
+    }
+    GreaterOrEqualThan(Data(a), Data(b)) -> fn(row) {
       let left = to_filter_data(schema.table, a)
       let right = to_filter_data(schema.table, b)
       data_type.compare(left(row), right(row)) != order.Lt
     }
-    GreaterThan(a, b) -> fn(row) {
+    GreaterThan(Data(a), Data(b)) -> fn(row) {
       let left = to_filter_data(schema.table, a)
       let right = to_filter_data(schema.table, b)
       data_type.compare(left(row), right(row)) == order.Gt
     }
-    LesserOrEqualThan(a, b) -> fn(row) {
+    LesserOrEqualThan(Data(a), Data(b)) -> fn(row) {
       let left = to_filter_data(schema.table, a)
       let right = to_filter_data(schema.table, b)
       data_type.compare(left(row), right(row)) != order.Gt
     }
-    LesserThan(a, b) -> fn(row) {
+    LesserThan(Data(a), Data(b)) -> fn(row) {
       let left = to_filter_data(schema.table, a)
       let right = to_filter_data(schema.table, b)
       data_type.compare(left(row), right(row)) == order.Lt
     }
-    Contains(a, b) -> fn(row) {
+    Contains(Data(a), Data(b)) -> fn(row) {
       let left = to_filter_data(schema.table, a)
       let right = to_filter_data(schema.table, b)
       contains(left(row), right(row))
+    }
+    In(Data(a), b) -> fn(row) {
+      let left = to_filter_data(schema.table, a)
+      let right = to_filter_data_list(schema.table, b)
+      in(left(row), right(row))
     }
     Not(a) -> fn(row) {
       let unary = to_filter(schema, a)
@@ -450,6 +490,25 @@ fn to_filter(schema: Schema, operation: Operation) -> OperationFn {
       let right = to_filter(schema, b)
       left(row) || right(row)
     }
+    Regex(Data(a), Data(b)) -> fn(row) {
+      let left = to_filter_data(schema.table, a)
+      let right = to_filter_data(schema.table, b)
+      regex(left(row), right(row))
+    }
+  }
+}
+
+fn regex(left: DataType, right: DataType) -> Bool {
+  case left, right {
+    data_type.String(l), data_type.String(r) -> {
+      case regex.from_string(l) {
+        Ok(re) -> regex.check(re, r)
+        // TODO should we trigger an error here instead?
+        _ -> False
+      }
+    }
+    // TODO should we trigger an error here instead?
+    _, _ -> False
   }
 }
 
@@ -467,6 +526,10 @@ fn contains(left: DataType, right: DataType) -> Bool {
     // TODO should we trigger an error here instead?
     _, _ -> False
   }
+}
+
+fn in(needle: DataType, hay: List(DataType)) -> Bool {
+  list.contains(hay, needle)
 }
 
 fn find_range(schema: Schema, key_hash: Int) -> #(Int, Schema) {

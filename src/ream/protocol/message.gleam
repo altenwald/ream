@@ -55,6 +55,10 @@ pub type ProjectionIndex {
   /// projection.
   UniqueKey
 
+  /// Key index. Similar to the previous but it let add duplicated
+  /// elements.
+  Index
+
   /// No indexes. It's the default value for most of the fields. See
   /// `ProjectionField` for further information.
   NoIndex
@@ -255,9 +259,9 @@ pub type Message {
   /// If there are errors presented the return will be as follows:
   /// 
   /// ```
-  /// C: AGGREGATE SET emails 1 12
+  /// C: AGGREGATE SET emails "d0e72dec-6c77-4cb3-9fe1-7d86ab603a92" 12
   /// C: {"emails":1002}
-  /// S: AGGREGATE NON SET emails 1 "Invalid JSON"
+  /// S: AGGREGATE NON SET emails "d0e72dec-6c77-4cb3-9fe1-7d86ab603a92" "Invalid message"
   /// ```
   AggregateNonSet(Aggregator, AggregateId, reason: String)
 
@@ -266,8 +270,8 @@ pub type Message {
   /// bit different:
   /// 
   /// ```
-  /// C: AGGREGATE REMOVE emails 27d1b5a0-c54f-4664-a549-b876b0bb3661
-  /// S: AGGREGATE REMOVED emails 27d1b5a0-c54f-4664-a549-b876b0bb3661
+  /// C: AGGREGATE REMOVE emails "27d1b5a0-c54f-4664-a549-b876b0bb3661"
+  /// S: AGGREGATE REMOVED emails "27d1b5a0-c54f-4664-a549-b876b0bb3661"
   /// ```
   /// 
   /// The action is always returning the correct state even when the object to
@@ -280,8 +284,8 @@ pub type Message {
   /// It's retrieving the aggregation from the persistent storage:
   /// 
   /// ```
-  /// C: AGGREGATE GET emails 27d1b5a0-c54f-4664-a549-b876b0bb3661
-  /// S: AGGREGATE GOT emails 27d1b5a0-c54f-4664-a549-b876b0bb3661 15
+  /// C: AGGREGATE GET emails "27d1b5a0-c54f-4664-a549-b876b0bb3661"
+  /// S: AGGREGATE GOT emails "27d1b5a0-c54f-4664-a549-b876b0bb3661" 15
   /// S: {"emails":1002}
   /// ```
   /// 
@@ -293,8 +297,8 @@ pub type Message {
   /// If the aggregate isn't found the response is as follows:
   /// 
   /// ```
-  /// C: AGGREGATE GET emails 1
-  /// S: AGGREGATE NON GOT emails 1 "Not found"
+  /// C: AGGREGATE GET emails "27d1b5a0-c54f-4664-a549-b876b0bb3661"
+  /// S: AGGREGATE NON GOT emails "27d1b5a0-c54f-4664-a549-b876b0bb3661" "Not found"
   /// ```
   AggregateNonGot(Aggregator, AggregateId, reason: String)
 
@@ -317,7 +321,7 @@ pub type Message {
   /// we can create a projection with the following information:
   /// 
   /// ```
-  /// C: PROJECTION CREATE users 6 +name +email position address city *country salary
+  /// C: PROJECTION CREATE users 7 +name +email position address city *country salary
   /// S: PROJECTION CREATED users
   /// ```
   /// 
@@ -357,7 +361,7 @@ pub type Message {
   /// The content must contain all of the fields indicated in the creation of
   /// the projection. The response indicates the name of the projection
   /// created.
-  ProjectionSet(ProjectionName, data: BitString)
+  ProjectionSet(ProjectionName, size: Int, data: BitString)
 
   /// See `ProjectionSet`.
   ProjectionSetDone(ProjectionName, id: data_type.DataType)
@@ -396,10 +400,19 @@ pub type Message {
   /// > The projection should have all of the information you need. If you
   /// > think you need something like JOINs then you should create a new
   /// > projection with the information you need.
-  ProjectionSelect(ProjectionName, conditions: schema.Operation)
+  ProjectionSelect(
+    ProjectionName,
+    size: Int,
+    query: BitString,
+    conditions: schema.Operation,
+  )
 
   /// See `ProjectionSelect`.
-  ProjectionSelected(ProjectionName, data: List(List(data_type.DataType)))
+  ProjectionSelected(
+    ProjectionName,
+    size: Int,
+    data: List(List(data_type.DataType)),
+  )
 
   // TODO changes should be a list of field names and expressions
   /// It's updating the projection from the persistent storage based on the
