@@ -68,7 +68,7 @@ pub type State {
 }
 
 /// The open function opens a file in the given mode. The function is returning
-/// a Pid that can be used to read and write in the file.
+/// a Subject that can be used to read and write in the file.
 pub fn open(
   filename: String,
   mode: List(Mode),
@@ -100,7 +100,10 @@ fn file_open(
   mode mode: List(Mode),
 ) -> Result(Pid, file.Reason)
 
-pub fn handle_message(message: Message, state: State) -> actor.Next(State) {
+pub fn handle_message(
+  message: Message,
+  state: State,
+) -> actor.Next(Message, State) {
   case message {
     Shutdown(from) -> {
       let result = do_close(state.pid)
@@ -111,13 +114,13 @@ pub fn handle_message(message: Message, state: State) -> actor.Next(State) {
     ReadMessage(from, offset, bytes) -> {
       let result = do_read(state.pid, offset, bytes)
       process.send(from, result)
-      actor.Continue(state)
+      actor.continue(state)
     }
 
     WriteMessage(from, offset, data) -> {
       let result = do_write(state.pid, offset, data)
       process.send(from, result)
-      actor.Continue(state)
+      actor.continue(state)
     }
   }
 }
